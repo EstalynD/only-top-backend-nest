@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
@@ -10,7 +10,12 @@ import { DatabaseModule } from '../database/database.module.js';
 import { UsersModule } from '../users/users.module.js';
 
 @Module({
-  imports: [DatabaseModule, UsersModule, RbacModule, MongooseModule.forFeature([{ name: TokenEntity.name, schema: TokenSchema }])],
+  imports: [
+    DatabaseModule,
+    UsersModule,
+    forwardRef(() => RbacModule),
+    MongooseModule.forFeature([{ name: TokenEntity.name, schema: TokenSchema }]),
+  ],
   providers: [AuthService, TokenStore, AuthGuard],
   controllers: [AuthController],
   exports: [AuthService, TokenStore, AuthGuard],

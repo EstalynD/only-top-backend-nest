@@ -5,6 +5,7 @@ import { randomBytes } from 'crypto';
 import { TokenStore } from './token.store.js';
 import type { TokenRecord, AuthUser } from './auth.types.js';
 import { UserEntity, type UserDocument } from '../users/user.schema.js';
+import { RbacService } from '../rbac/rbac.service.js';
 import { createHash } from 'crypto';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class AuthService {
   constructor(
     private readonly tokenStore: TokenStore,
     @InjectModel(UserEntity.name) private readonly userModel: Model<UserDocument>,
+    private readonly rbacService: RbacService,
   ) {}
 
   // Emite un token opaco y lo guarda con TTL
@@ -54,11 +56,14 @@ export class AuthService {
     if (userDoc.passwordHash !== hash) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
+    const roles = userDoc.roles ?? [];
+    const directPerms = userDoc.permissions ?? [];
+    const effectivePerms = await this.rbacService.computeEffectivePermissions(roles, directPerms);
     const authUser: AuthUser = {
       id: (userDoc as any)._id.toString(),
       username: userDoc.username,
-      roles: userDoc.roles ?? [],
-      permissions: userDoc.permissions ?? [],
+      roles,
+      permissions: effectivePerms,
     };
     const { token, expiresAt } = await this.issueToken(authUser);
     return { token, expiresAt, user: authUser };

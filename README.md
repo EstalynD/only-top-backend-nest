@@ -109,6 +109,37 @@ $ mau deploy
 
 With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
 
+## Cloudinary (subida de imágenes y PDFs)
+
+Variables de entorno requeridas (añade al `.env`):
+
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+
+Uso del servicio (inyectar en cualquier provider/controller):
+
+```ts
+import { CloudinaryService } from './cloudinary/cloudinary.service.js';
+
+constructor(private readonly cloudinary: CloudinaryService) {}
+
+// Buffer o URL
+await this.cloudinary.uploadFromBuffer(file.buffer, file.originalname);
+// o
+await this.cloudinary.uploadFromUrl('https://.../imagen.png', { folder: 'only-top/employee-documents' });
+
+// Generar URL firmada de vista/descarga
+const viewUrl = this.cloudinary.getSignedViewUrl('only-top/employee-documents/abc123', { resourceType: 'image' });
+const downloadUrl = this.cloudinary.getSignedDownloadUrl('only-top/employee-documents/abc123', { resourceType: 'raw', format: 'pdf' });
+```
+
+Notas:
+
+- `resource_type: 'auto'` permite subir imágenes y PDFs con el mismo método.
+- Tamaño máximo por defecto: 5MB (configurable en el servicio).
+- Carpeta base por defecto: `only-top/employee-documents`.
+
 ## Resources
 
 Check out a few resources that may come in handy when working with NestJS:

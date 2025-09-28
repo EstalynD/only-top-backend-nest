@@ -14,6 +14,16 @@ export class UserEntity {
 
   @Prop({ type: [String], default: [] })
   permissions!: string[];
+
+  // Campos de perfil (opcionales)
+  @Prop({ type: String, default: null })
+  displayName?: string | null;
+
+  @Prop({ type: String, lowercase: true, trim: true, default: null })
+  email?: string | null;
+
+  @Prop({ type: String, default: null })
+  avatarUrl?: string | null;
 }
 
 export type UserDocument = HydratedDocument<UserEntity>;
