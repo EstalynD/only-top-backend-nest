@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { AuthGuard } from './auth.guard.js';
 
@@ -22,5 +22,11 @@ export class AuthController {
     const token = req.token as string;
     await this.authService.revokeToken(token);
     return { ok: true };
+  }
+
+  @Get('me')
+  @UseGuards(AuthGuard)
+  me(@Req() req: any) {
+    return { user: req.user };
   }
 }
