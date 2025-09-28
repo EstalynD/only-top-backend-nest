@@ -76,6 +76,30 @@ When you're ready to deploy your NestJS application to production, there are som
 
 Si usas un monorepo, define el directorio raíz del backend como app path en Heroku o usa un buildpack de monorepo para que Heroku ejecute `npm install` y `npm run build` dentro de `only-top-backend/`.
 
+## Autenticación y RBAC
+
+Este backend incluye autenticación con token opaco y un sistema de roles y permisos.
+
+- Token opaco emitido en `POST /auth/login` (body: `{ username, password }`).
+- Logout en `POST /auth/logout` (requiere header `Authorization: Bearer <token>`).
+- Guard de autenticación: verifica `Authorization` y adjunta `req.user`.
+- RBAC:
+  - Permisos centralizados (`system.admin`, `dashboard.general.ver`, `sistema.perfil.ver`).
+  - Roles (`ADMIN_GLOBAL`, `USUARIO_NORMAL`).
+  - Aliases de permisos para normalizar equivalencias.
+  - Decoradores `@Permissions()` y `@Roles()` para proteger rutas.
+
+Rutas de ejemplo protegidas (ver `src/sistema/sistema.controller.ts`):
+
+- `GET /sistema/admin-area` → requiere `@Roles('ADMIN_GLOBAL')` y `@Permissions('system.admin')`.
+- `GET /sistema/perfil` → requiere `@Permissions('sistema.perfil.ver')`.
+
+Flujo rápido de prueba:
+
+1. `POST /auth/login` con `{ "username": "admin", "password": "..." }` → recibe `{ token, user }` con rol `ADMIN_GLOBAL` y permiso `system.admin`.
+2. Usar `Authorization: Bearer <token>` para acceder a `/sistema/admin-area` y `/sistema/perfil`.
+3. `POST /auth/logout` para revocar el token.
+
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
 
 ```bash
