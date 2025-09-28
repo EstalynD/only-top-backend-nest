@@ -61,6 +61,21 @@ $ npm run test:cov
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
+### Heroku (producción)
+
+- No dependas del CLI de Nest (`nest`) en tiempo de ejecución. Compila y arranca con Node sobre el JavaScript generado.
+- Scripts ya configurados en `package.json`:
+  - `build`: compila a `dist/` con TypeScript
+  - `start` / `start:prod`: `node dist/main.js`
+  - `heroku-postbuild`: compila automáticamente tras el deploy
+- `Procfile` incluido:
+  
+  ```
+  web: npm run start:prod
+  ```
+
+Si usas un monorepo, define el directorio raíz del backend como app path en Heroku o usa un buildpack de monorepo para que Heroku ejecute `npm install` y `npm run build` dentro de `only-top-backend/`.
+
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
 
 ```bash
