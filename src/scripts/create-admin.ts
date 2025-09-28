@@ -5,7 +5,7 @@
   Variables:
     MONGO_URI (opcional) - si no se define, usa mongodb://127.0.0.1:27017/onlytop
 */
-import { connect, model } from 'mongoose';
+import mongoose, { connect, model } from 'mongoose';
 import { UserEntity, UserSchema } from '../users/user.schema.js';
 import { createHash } from 'crypto';
 
@@ -30,15 +30,20 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const username = args.username || args.user || 'admin';
   const password = args.password || args.pw || 'admin123';
-  const uri = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/onlytop';
+  // Usar el mismo valor por defecto que DatabaseModule
+  const uri = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/onlytop-v2';
 
   if (!username || !password) {
     console.error('Debe proporcionar --username y --password');
     process.exit(1);
   }
 
+  console.log(`[create-admin] Conectando a MongoDB: ${uri}`);
   await connect(uri);
+  console.log(`[create-admin] Conectado. Base de datos: ${mongoose.connection.name}`);
   const UserModel = model<UserEntity>('UserEntity', UserSchema);
+  await UserModel.init(); // asegura índices (p.ej., unique username)
+  console.log(`[create-admin] Colección destino: ${UserModel.collection.name}`);
 
   const passwordHash = hashPassword(password);
   const adminData = {

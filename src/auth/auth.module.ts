@@ -7,9 +7,10 @@ import { AuthGuard } from './auth.guard.js';
 import { RbacModule } from '../rbac/rbac.module.js';
 import { TokenEntity, TokenSchema } from './token.schema.js';
 import { DatabaseModule } from '../database/database.module.js';
+import { UsersModule } from '../users/users.module.js';
 
 @Module({
-  imports: [DatabaseModule, RbacModule, MongooseModule.forFeature([{ name: TokenEntity.name, schema: TokenSchema }])],
+  imports: [DatabaseModule, UsersModule, RbacModule, MongooseModule.forFeature([{ name: TokenEntity.name, schema: TokenSchema }])],
   providers: [AuthService, TokenStore, AuthGuard],
   controllers: [AuthController],
   exports: [AuthService, TokenStore, AuthGuard],

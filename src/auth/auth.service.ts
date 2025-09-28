@@ -1,11 +1,18 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { randomBytes } from 'crypto';
 import { TokenStore } from './token.store.js';
 import type { TokenRecord, AuthUser } from './auth.types.js';
+import { UserEntity, type UserDocument } from '../users/user.schema.js';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly tokenStore: TokenStore) {}
+  constructor(
+    private readonly tokenStore: TokenStore,
+    @InjectModel(UserEntity.name) private readonly userModel: Model<UserDocument>,
+  ) {}
 
   // Emite un token opaco y lo guarda con TTL
   async issueToken(user: AuthUser, ttlSeconds = 60 * 60 * 8): Promise<{ token: string; expiresAt: number }> {
@@ -35,5 +42,25 @@ export class AuthService {
 
   async revokeToken(token: string): Promise<void> {
     await this.tokenStore.revoke(token);
+  }
+
+  // Valida credenciales reales contra MongoDB y emite token
+  async loginWithPassword(username: string, password: string): Promise<{ token: string; expiresAt: number; user: AuthUser }> {
+    const userDoc = await this.userModel.findOne({ username }).lean().exec();
+    if (!userDoc) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+    const hash = createHash('sha256').update(password).digest('hex');
+    if (userDoc.passwordHash !== hash) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+    const authUser: AuthUser = {
+      id: (userDoc as any)._id.toString(),
+      username: userDoc.username,
+      roles: userDoc.roles ?? [],
+      permissions: userDoc.permissions ?? [],
+    };
+    const { token, expiresAt } = await this.issueToken(authUser);
+    return { token, expiresAt, user: authUser };
   }
 }
