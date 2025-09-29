@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { PermissionsGuard } from '../rbac/rbac.permissions.guard.js';
 import { SetMetadata } from '@nestjs/common';
@@ -20,5 +20,11 @@ export class UsersAdminController {
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
     return this.usersService.searchUsers({ q: q?.trim() || undefined, page: pageNum, limit: limitNum });
+  }
+
+  @Post()
+  async createUser(@Body() body: { username: string; password: string; displayName?: string | null; email?: string | null }) {
+    // El servicio maneja validaciones y duplicados
+    return this.usersService.createUser(body);
   }
 }

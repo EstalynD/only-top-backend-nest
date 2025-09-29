@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { UserEntity, type UserDocument } from './user.schema.js';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class UsersService {
@@ -57,5 +58,28 @@ export class UsersService {
       total,
       pages: Math.ceil(total / limit) || 1,
     };
+  }
+
+  async createUser(data: { username: string; password: string; displayName?: string | null; email?: string | null }) {
+    const username = String(data.username || '').trim();
+    const password = String(data.password || '');
+    if (!username || !password) {
+      throw new Error('username y password son requeridos');
+    }
+    const exists = await this.userModel.findOne({ username }).lean().exec();
+    if (exists) {
+      throw new Error('El usuario ya existe');
+    }
+    const passwordHash = createHash('sha256').update(password).digest('hex');
+    const doc = await this.userModel.create({
+      username,
+      passwordHash,
+      displayName: data.displayName ?? null,
+      email: data.email ?? null,
+      roles: [],
+      permissions: [],
+    });
+    const { passwordHash: _, ...obj } = doc.toObject();
+    return obj;
   }
 }
