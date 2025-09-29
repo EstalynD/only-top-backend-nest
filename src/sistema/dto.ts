@@ -1,4 +1,5 @@
-import { IsDateString, IsNotEmpty, IsNumber, IsObject, IsOptional, Min, IsBoolean } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsNumber, IsObject, IsOptional, Min, IsBoolean, IsArray, ValidateNested, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateTrmDto {
   // Fecha/hora ISO de vigencia. Se recomienda normalizar a 00:00:00Z del día de vigencia
@@ -100,6 +101,297 @@ export class EmailConfigDto {
 export class TestEmailDto {
   @IsNotEmpty()
   to!: string;
+}
+
+// === FINANCE DTOS ===
+
+export type CommissionType = 'PERCENTAGE' | 'FIXED_USD' | 'FIXED_COP';
+
+export class CreatePaymentProcessorDto {
+  @IsNotEmpty()
+  name!: string;
+
+  @IsNotEmpty()
+  commissionType!: CommissionType;
+
+  @IsNumber()
+  @Min(0)
+  commissionValue!: number;
+
+  @IsDateString()
+  effectiveDate!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  description?: string;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, any>;
+}
+
+export class UpdatePaymentProcessorDto {
+  @IsOptional()
+  name?: string;
+
+  @IsOptional()
+  commissionType?: CommissionType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  commissionValue?: number;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveDate?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  description?: string;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, any>;
+}
+
+export class CommissionRuleDto {
+  @IsNumber()
+  @Min(0)
+  minUsd!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  maxUsd?: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  percentage!: number;
+}
+
+export class CreateCommissionScaleDto {
+  @IsNotEmpty()
+  name!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CommissionRuleDto)
+  rules!: CommissionRuleDto[];
+
+  @IsOptional()
+  description?: string;
+}
+
+export class UpdateCommissionScaleDto {
+  @IsOptional()
+  name?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CommissionRuleDto)
+  rules?: CommissionRuleDto[];
+
+  @IsOptional()
+  description?: string;
+}
+
+// === INTERNAL COMMISSIONS DTOS ===
+
+export class PerformanceScaleDto {
+  @IsNumber()
+  @Min(0)
+  @Max(1000) // Allow up to 1000% performance
+  fromPercent!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  toPercent?: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  commissionPercent!: number;
+}
+
+export class UpdateInternalCommissionsDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  salesCloserPercent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(12)
+  salesCloserMonths?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  traffickerPercent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  chattersMinPercent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  chattersMaxPercent?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PerformanceScaleDto)
+  chattersPerformanceScale?: PerformanceScaleDto[];
+
+  @IsOptional()
+  description?: string;
+}
+
+// === ATTENDANCE CONFIGURATION DTOS ===
+
+export type ShiftType = 'AM' | 'PM' | 'MADRUGADA' | 'CUSTOM';
+
+export class TimeSlotDto {
+  @IsNotEmpty()
+  startTime!: string; // Format: "HH:mm"
+
+  @IsNotEmpty()
+  endTime!: string; // Format: "HH:mm"
+}
+
+export class ShiftDto {
+  @IsNotEmpty()
+  id!: string;
+
+  @IsNotEmpty()
+  name!: string;
+
+  @IsNotEmpty()
+  type!: ShiftType;
+
+  @ValidateNested()
+  @Type(() => TimeSlotDto)
+  timeSlot!: TimeSlotDto;
+
+  @IsOptional()
+  description?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class FixedScheduleDto {
+  @ValidateNested()
+  @Type(() => TimeSlotDto)
+  monday!: TimeSlotDto;
+
+  @ValidateNested()
+  @Type(() => TimeSlotDto)
+  tuesday!: TimeSlotDto;
+
+  @ValidateNested()
+  @Type(() => TimeSlotDto)
+  wednesday!: TimeSlotDto;
+
+  @ValidateNested()
+  @Type(() => TimeSlotDto)
+  thursday!: TimeSlotDto;
+
+  @ValidateNested()
+  @Type(() => TimeSlotDto)
+  friday!: TimeSlotDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TimeSlotDto)
+  saturday?: TimeSlotDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TimeSlotDto)
+  sunday?: TimeSlotDto;
+}
+
+export class UpdateAttendanceConfigDto {
+  @IsOptional()
+  @IsBoolean()
+  fixedScheduleEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  rotatingShiftsEnabled?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FixedScheduleDto)
+  fixedSchedule?: FixedScheduleDto;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ShiftDto)
+  rotatingShifts?: ShiftDto[];
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(240)
+  breakDurationMinutes?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(60)
+  toleranceMinutes?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  weekendEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  overtimeEnabled?: boolean;
+
+  @IsOptional()
+  timezone?: string;
+
+  @IsOptional()
+  description?: string;
 }
 
 export type CurrencyFormatSpec = {
