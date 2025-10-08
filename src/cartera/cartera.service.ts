@@ -268,7 +268,7 @@ export class CarteraService {
     erroresDetalle: Array<{ modeloId: string; error: string }>;
   }> {
     // Obtener modelos a facturar
-    let modelos: ModeloDocument[];
+  let modelos: ModeloDocument[];
 
     if (dto.modeloIds && dto.modeloIds.length > 0) {
       // Facturar solo las modelos especificadas
@@ -276,11 +276,10 @@ export class CarteraService {
         .find({
           _id: { $in: dto.modeloIds.map(id => new Types.ObjectId(id)) },
           estado: 'ACTIVA',
-        })
-        .lean();
+        });
     } else {
       // Facturar todas las modelos activas
-      modelos = await this.modeloModel.find({ estado: 'ACTIVA' }).lean();
+  modelos = await this.modeloModel.find({ estado: 'ACTIVA' });
     }
 
     this.logger.log(`Generando facturas para ${modelos.length} modelos...`);

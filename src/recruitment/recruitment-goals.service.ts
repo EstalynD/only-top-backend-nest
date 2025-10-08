@@ -109,7 +109,6 @@ export class RecruitmentGoalsService {
       .find(query)
       .populate('salesCloserId', 'nombre apellido correoElectronico correoCorporativo')
       .sort({ fechaInicio: -1 })
-      .lean()
       .exec();
   }
 
@@ -121,7 +120,6 @@ export class RecruitmentGoalsService {
     const goal = await this.goalModel
       .findById(id)
       .populate('salesCloserId', 'nombre apellido correoElectronico correoCorporativo')
-      .lean()
       .exec();
 
     if (!goal) {
