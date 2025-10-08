@@ -8,10 +8,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "node dist/main.js",
+    "start": "node dist/src/main.js",
     "start:dev": "cross-env PORT=3041 nest start --watch",
     "start:debug": "cross-env PORT=3041 nest start --debug --watch",
-    "start:prod": "node dist/main.js",
+    "start:prod": "node dist/src/main.js",
     "heroku-postbuild": "npm run build",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
@@ -19,9 +19,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "create:admin": "npm run build && node dist/scripts/create-admin.js",
-    "seed:rrhh": "npm run build && node dist/scripts/init-rrhh-data.js",
-    "seed:empleados:chatters-traffickers": "npm run build && node dist/scripts/seed-empleados-chatters-traffickers.js"
+    "create:admin": "npm run build && node dist/src/scripts/create-admin.js",
+    "seed:rrhh": "npm run build && node dist/src/scripts/init-rrhh-data.js",
+    "seed:empleados:chatters-traffickers": "npm run build && node dist/src/scripts/seed-empleados-chatters-traffickers.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
