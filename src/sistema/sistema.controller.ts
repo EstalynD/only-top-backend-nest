@@ -12,6 +12,7 @@ import {
   ListTrmQueryDto, 
   UpdateCurrencyDto, 
   UpdateTimezoneDto, 
+  UpdateTimeFormatDto,
   EmailConfigDto, 
   TestEmailDto,
   CreatePaymentProcessorDto,
@@ -64,6 +65,14 @@ export class SistemaController {
     return this.sistema.updateCurrency(code, dto);
   }
 
+  // Refrescar caché de configuraciones de moneda
+  @Post('currencies/refresh-cache')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  refreshCurrencyCache() {
+    return this.sistema.refreshCurrencyCache();
+  }
+
   // Zonas horarias disponibles
   @Get('timezones/available')
   @Permissions('sistema.config.ver')
@@ -84,6 +93,30 @@ export class SistemaController {
   @Permissions('system.admin')
   updateTimezone(@Body() dto: UpdateTimezoneDto) {
     return this.sistema.updateTimezone(dto);
+  }
+
+  // === TIME FORMAT CONFIGURATION ENDPOINTS ===
+
+  // Obtener formatos de hora disponibles
+  @Get('time-formats/available')
+  @Permissions('sistema.config.ver')
+  availableTimeFormats() {
+    return this.sistema.getAvailableTimeFormats();
+  }
+
+  // Obtener formato de hora seleccionado
+  @Get('time-formats/selected')
+  @Permissions('sistema.config.ver')
+  selectedTimeFormat() {
+    return this.sistema.getTimeFormat();
+  }
+
+  // Actualizar formato de hora seleccionado
+  @Put('time-formats')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  updateTimeFormat(@Body() dto: UpdateTimeFormatDto) {
+    return this.sistema.updateTimeFormat(dto);
   }
 
   // Crear TRM manual con vigencia y auditoría
@@ -339,6 +372,23 @@ export class SistemaController {
     return this.attendanceConfig.getAttendanceConfig();
   }
 
+  // Obtener fecha/hora global desde la cual se permite marcar asistencia
+  @Get('attendance/enabled-from')
+  @Permissions('sistema.config.ver')
+  async getAttendanceEnabledFrom() {
+    const from = await this.attendanceConfig.getAttendanceEnabledFrom();
+    return { attendanceEnabledFrom: from ? from.toISOString() : null };
+  }
+
+  // Establecer/actualizar la fecha/hora global de habilitación de asistencia
+  @Put('attendance/enabled-from')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  setAttendanceEnabledFrom(@Body() body: { attendanceEnabledFrom: string | null }, @Req() req: any) {
+    const updatedBy = req.user?.username || 'system';
+    return this.attendanceConfig.setAttendanceEnabledFrom(body.attendanceEnabledFrom, updatedBy);
+  }
+
   // Actualizar configuración de asistencia
   @Put('attendance/config')
   @Roles('ADMIN_GLOBAL')
@@ -482,5 +532,112 @@ export class SistemaController {
   toggleRotatingShifts(@Body() body: { enabled: boolean }, @Req() req: any) {
     const updatedBy = req.user?.username || 'system';
     return this.attendanceConfig.toggleRotatingShifts(body.enabled, updatedBy);
+  }
+
+  // === AREA/CARGO ASSIGNMENTS FOR SHIFTS ===
+
+  // Obtener asignaciones de un turno
+  @Get('attendance/shifts/:shiftId/assignments')
+  @Permissions('sistema.config.ver')
+  getShiftAssignments(@Param('shiftId') shiftId: string) {
+    return this.attendanceConfig.getShiftAssignments(shiftId);
+  }
+
+  // Asignar áreas a un turno
+  @Post('attendance/shifts/:shiftId/assign-areas')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  assignAreasToShift(
+    @Param('shiftId') shiftId: string,
+    @Body() body: { areaIds: string[] },
+    @Req() req: any,
+  ) {
+    const updatedBy = req.user?.username || 'system';
+    return this.attendanceConfig.assignAreasToShift(shiftId, body.areaIds, updatedBy);
+  }
+
+  // Asignar cargos a un turno
+  @Post('attendance/shifts/:shiftId/assign-cargos')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  assignCargosToShift(
+    @Param('shiftId') shiftId: string,
+    @Body() body: { cargoIds: string[] },
+    @Req() req: any,
+  ) {
+    const updatedBy = req.user?.username || 'system';
+    return this.attendanceConfig.assignCargosToShift(shiftId, body.cargoIds, updatedBy);
+  }
+
+  // Remover área de un turno
+  @Delete('attendance/shifts/:shiftId/areas/:areaId')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  removeAreaFromShift(
+    @Param('shiftId') shiftId: string,
+    @Param('areaId') areaId: string,
+    @Req() req: any,
+  ) {
+    const updatedBy = req.user?.username || 'system';
+    return this.attendanceConfig.removeAreaFromShift(shiftId, areaId, updatedBy);
+  }
+
+  // Remover cargo de un turno
+  @Delete('attendance/shifts/:shiftId/cargos/:cargoId')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  removeCargoFromShift(
+    @Param('shiftId') shiftId: string,
+    @Param('cargoId') cargoId: string,
+    @Req() req: any,
+  ) {
+    const updatedBy = req.user?.username || 'system';
+    return this.attendanceConfig.removeCargoFromShift(shiftId, cargoId, updatedBy);
+  }
+
+  // === FIXED SCHEDULE ASSIGNMENTS ===
+
+  // Obtener asignaciones del horario fijo
+  @Get('attendance/fixed-schedule/assignments')
+  @Permissions('sistema.config.ver')
+  getFixedScheduleAssignments() {
+    return this.attendanceConfig.getFixedScheduleAssignments();
+  }
+
+  // Asignar áreas/cargos al horario fijo (unificado)
+  @Post('attendance/fixed-schedule/assign')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  async assignToFixedSchedule(
+    @Body() body: { areaIds?: string[]; cargoIds?: string[] },
+    @Req() req: any,
+  ) {
+    const updatedBy = req.user?.username || 'system';
+    let updated = await this.attendanceConfig.getAttendanceConfig();
+    if (body.areaIds) {
+      updated = await this.attendanceConfig.assignAreasToFixedSchedule(body.areaIds, updatedBy);
+    }
+    if (body.cargoIds) {
+      updated = await this.attendanceConfig.assignCargosToFixedSchedule(body.cargoIds, updatedBy);
+    }
+    return updated;
+  }
+
+  // Remover área del horario fijo
+  @Delete('attendance/fixed-schedule/areas/:areaId')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  removeAreaFromFixedSchedule(@Param('areaId') areaId: string, @Req() req: any) {
+    const updatedBy = req.user?.username || 'system';
+    return this.attendanceConfig.removeAreaFromFixedSchedule(areaId, updatedBy);
+  }
+
+  // Remover cargo del horario fijo
+  @Delete('attendance/fixed-schedule/cargos/:cargoId')
+  @Roles('ADMIN_GLOBAL')
+  @Permissions('system.admin')
+  removeCargoFromFixedSchedule(@Param('cargoId') cargoId: string, @Req() req: any) {
+    const updatedBy = req.user?.username || 'system';
+    return this.attendanceConfig.removeCargoFromFixedSchedule(cargoId, updatedBy);
   }
 }

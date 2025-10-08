@@ -16,6 +16,8 @@ export interface Shift {
   timeSlot: TimeSlot;
   description?: string;
   isActive: boolean;
+  assignedAreas?: string[]; // IDs de áreas asignadas al turno
+  assignedCargos?: string[]; // IDs de cargos asignados al turno
 }
 
 export interface FixedSchedule {
@@ -26,6 +28,11 @@ export interface FixedSchedule {
   friday: TimeSlot;
   saturday?: TimeSlot; // Optional weekend
   sunday?: TimeSlot;   // Optional weekend
+  // Configuración global de almuerzo para horario fijo
+  lunchBreakEnabled?: boolean;
+  lunchBreak?: TimeSlot; // Intervalo de almuerzo (HH:mm - HH:mm)
+  assignedAreas?: string[]; // IDs de áreas asignadas al horario fijo
+  assignedCargos?: string[]; // IDs de cargos asignados al horario fijo
 }
 
 @Schema({ collection: 'attendance_configs', timestamps: true })
@@ -49,7 +56,11 @@ export class AttendanceConfigEntity {
       thursday: { startTime: String, endTime: String },
       friday: { startTime: String, endTime: String },
       saturday: { startTime: String, endTime: String },
-      sunday: { startTime: String, endTime: String }
+      sunday: { startTime: String, endTime: String },
+      lunchBreakEnabled: { type: Boolean, default: false },
+      lunchBreak: { startTime: String, endTime: String },
+      assignedAreas: { type: [String], default: [] },
+      assignedCargos: { type: [String], default: [] }
     },
     default: {
       monday: { startTime: '09:00', endTime: '18:00' },
@@ -58,7 +69,11 @@ export class AttendanceConfigEntity {
       thursday: { startTime: '09:00', endTime: '18:00' },
       friday: { startTime: '09:00', endTime: '18:00' },
       saturday: { startTime: '09:00', endTime: '14:00' },
-      sunday: null
+      sunday: null,
+      lunchBreakEnabled: false,
+      lunchBreak: { startTime: '13:00', endTime: '14:00' },
+      assignedAreas: [],
+      assignedCargos: []
     }
   })
   fixedSchedule?: FixedSchedule;
@@ -74,7 +89,9 @@ export class AttendanceConfigEntity {
         endTime: { type: String, required: true }
       },
       description: { type: String },
-      isActive: { type: Boolean, default: true }
+      isActive: { type: Boolean, default: true },
+      assignedAreas: { type: [String], default: [] },
+      assignedCargos: { type: [String], default: [] }
     }],
     default: [
       {
@@ -83,7 +100,9 @@ export class AttendanceConfigEntity {
         type: 'AM',
         timeSlot: { startTime: '06:00', endTime: '14:00' },
         description: 'Turno de mañana - 6:00 am a 2:00 pm',
-        isActive: true
+        isActive: true,
+        assignedAreas: [],
+        assignedCargos: []
       },
       {
         id: 'shift_pm',
@@ -91,7 +110,9 @@ export class AttendanceConfigEntity {
         type: 'PM',
         timeSlot: { startTime: '14:00', endTime: '22:00' },
         description: 'Turno de tarde - 2:00 pm a 10:00 pm',
-        isActive: true
+        isActive: true,
+        assignedAreas: [],
+        assignedCargos: []
       },
       {
         id: 'shift_madrugada',
@@ -99,7 +120,9 @@ export class AttendanceConfigEntity {
         type: 'MADRUGADA',
         timeSlot: { startTime: '22:00', endTime: '06:00' },
         description: 'Turno de madrugada - 10:00 pm a 6:00 am',
-        isActive: true
+        isActive: true,
+        assignedAreas: [],
+        assignedCargos: []
       }
     ]
   })
@@ -126,6 +149,11 @@ export class AttendanceConfigEntity {
 
   @Prop({ type: String })
   updatedBy?: string; // User who last updated
+
+  // Fecha/hora global desde la cual se permite registrar asistencia en el sistema
+  // Si es null/undefined, no se restringe por fecha de habilitación
+  @Prop({ type: Date })
+  attendanceEnabledFrom?: Date;
 }
 
 export type AttendanceConfigDocument = HydratedDocument<AttendanceConfigEntity>;

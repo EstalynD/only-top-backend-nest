@@ -121,6 +121,8 @@ export class CloudinaryService {
       resource_type: resourceType,
       secure: true,
       version: opts.version,
+      // Forzar extensión si se proporciona (para raw: asegura Content-Type adecuado)
+      format: opts.format,
     };
     return cloudinary.url(publicId, this.signingEnabled ? { ...baseOpts, sign_url: true } : baseOpts);
   }
@@ -128,31 +130,33 @@ export class CloudinaryService {
   // URL firmada para descargar (attachment)
   getSignedDownloadUrl(
     publicId: string,
-    opts: { resourceType?: 'image' | 'raw' | 'auto'; format?: string; version?: number } = {},
+    opts: { resourceType?: 'image' | 'raw' | 'auto'; format?: string; version?: number; filename?: string } = {},
   ): string {
     if (!publicId) throw new Error('publicId requerido');
     const resourceType = opts.resourceType || 'image';
     const isRaw = resourceType === 'raw';
 
     if (isRaw) {
-      if (this.signingEnabled) {
-        return cloudinary.utils.private_download_url(publicId, opts.format || '', {
-          resource_type: 'raw',
-        });
-      }
+      // Para archivos raw (PDF, DOC, etc.), usar URL directa sin firma
+      // ya que las cuentas gratuitas tienen restricciones con private_download_url
+      // Incluir formato para que el navegador lo trate como el tipo correcto (p.ej., pdf)
+      // y sugerir nombre de archivo si se proporciona
+      const flags = opts.filename ? `attachment:${opts.filename}` : 'attachment';
       return cloudinary.url(publicId, {
         resource_type: 'raw',
         secure: true,
-        flags: 'attachment',
+        flags,
         version: opts.version,
+        format: opts.format,
       });
     }
 
     const baseOpts = {
       resource_type: 'image',
       secure: true,
-      flags: 'attachment',
+      flags: opts.filename ? `attachment:${opts.filename}` : 'attachment',
       version: opts.version,
+      format: opts.format,
     } as const;
     return cloudinary.url(publicId, this.signingEnabled ? { ...baseOpts, sign_url: true } : baseOpts);
   }
@@ -226,7 +230,7 @@ export class CloudinaryService {
       };
       const mimeType = mimeTypeMap[fileExtension.toLowerCase()] || 'image/jpeg';
 
-      return await this.uploadBuffer(
+      const uploadRes = await this.uploadBuffer(
         buffer,
         {
           public_id: publicId,
@@ -236,6 +240,31 @@ export class CloudinaryService {
         },
         mimeType,
       );
+
+      // Si la subida fue exitosa, calcular URLs de vista/descarga con formato y nombre adecuados
+      if (uploadRes.success && uploadRes.data?.publicId) {
+        const resourceType = (options.resource_type as 'image' | 'raw' | 'auto') || 'auto';
+        const format = fileExtension.toLowerCase();
+        const filenameWithExt = `${baseWithoutExt}.${format}`;
+
+        // URL para ver (inline) con extensión forzada
+        const viewUrl = this.getSignedViewUrl(uploadRes.data.publicId, {
+          resourceType,
+          format,
+        });
+
+        // URL para descargar con nombre sugerido y extensión
+        const downloadUrl = this.getSignedDownloadUrl(uploadRes.data.publicId, {
+          resourceType,
+          format,
+          filename: filenameWithExt,
+        });
+
+        uploadRes.data.url = viewUrl;
+        uploadRes.data.downloadUrl = downloadUrl;
+      }
+
+      return uploadRes;
     } catch (error: any) {
       this.logger.error('Error subiendo imagen desde buffer', error?.stack || error);
       throw error;

@@ -59,6 +59,13 @@ export class UpdateTimezoneDto {
   timezone!: 'Colombia' | 'Peru';
 }
 
+export type TimeFormat = '12h' | '24h';
+
+export class UpdateTimeFormatDto {
+  @IsNotEmpty()
+  format!: TimeFormat;
+}
+
 export class EmailConfigDto {
   @IsOptional()
   provider?: string;
@@ -345,6 +352,16 @@ export class FixedScheduleDto {
   @ValidateNested()
   @Type(() => TimeSlotDto)
   sunday?: TimeSlotDto;
+
+  // Configuración opcional de almuerzo para horario fijo
+  @IsOptional()
+  @IsBoolean()
+  lunchBreakEnabled?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TimeSlotDto)
+  lunchBreak?: TimeSlotDto;
 }
 
 export class UpdateAttendanceConfigDto {
@@ -392,6 +409,12 @@ export class UpdateAttendanceConfigDto {
 
   @IsOptional()
   description?: string;
+
+  // Fecha/hora global (ISO) desde la cual se permite registrar asistencia
+  // Ej: "2025-01-01T08:00:00.000Z". Si se omite, no cambia el valor.
+  @IsOptional()
+  @IsDateString()
+  attendanceEnabledFrom?: string;
 }
 
 export type CurrencyFormatSpec = {

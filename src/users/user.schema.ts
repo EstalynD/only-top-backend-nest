@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
 
 @Schema({ collection: 'users', timestamps: true })
 export class UserEntity {
@@ -14,6 +14,10 @@ export class UserEntity {
 
   @Prop({ type: [String], default: [] })
   permissions!: string[];
+
+  // Relación con empleado (opcional)
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'EmpleadoEntity', default: null, index: true })
+  empleadoId?: string | null;
 
   // Campos de perfil (opcionales)
   @Prop({ type: String, default: null })

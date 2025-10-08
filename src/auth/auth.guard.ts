@@ -1,4 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from './public.decorator.js';
 import type { Request } from 'express';
 import { AuthService } from './auth.service.js';
 import type { AuthUser } from './auth.types.js';
@@ -12,9 +14,16 @@ declare module 'http' {
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService, private readonly reflector: Reflector) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // Permitir acceso si la ruta está marcada como pública
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true;
+
     const req = context.switchToHttp().getRequest<Request & { user?: AuthUser; token?: string }>();
     const auth = (req.headers as any)['authorization'] as string | undefined;
     if (!auth || !auth.toLowerCase().startsWith('bearer ')) throw new UnauthorizedException('Missing token');

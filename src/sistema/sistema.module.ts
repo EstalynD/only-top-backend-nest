@@ -6,6 +6,7 @@ import { SystemConfigEntity, SystemConfigSchema } from './system-config.schema.j
 import { EmailConfigEntity, EmailConfigSchema } from './email-config.schema.js';
 import { PaymentProcessorEntity, PaymentProcessorSchema } from './payment-processor.schema.js';
 import { CommissionScaleEntity, CommissionScaleSchema } from './commission-scale.schema.js';
+import { ChatterCommissionScaleEntity, ChatterCommissionScaleSchema } from './chatter-commission-scale.schema.js';
 import { InternalCommissionEntity, InternalCommissionSchema } from './internal-commission.schema.js';
 import { AttendanceConfigEntity, AttendanceConfigSchema } from './attendance-config.schema.js';
 import { SistemaService } from './sistema.service.js';
@@ -26,6 +27,7 @@ import { EmailModule } from '../email/email.module.js';
       { name: EmailConfigEntity.name, schema: EmailConfigSchema },
       { name: PaymentProcessorEntity.name, schema: PaymentProcessorSchema },
       { name: CommissionScaleEntity.name, schema: CommissionScaleSchema },
+      { name: ChatterCommissionScaleEntity.name, schema: ChatterCommissionScaleSchema },
       { name: InternalCommissionEntity.name, schema: InternalCommissionSchema },
       { name: AttendanceConfigEntity.name, schema: AttendanceConfigSchema },
     ]), 

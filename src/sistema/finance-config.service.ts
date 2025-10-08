@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { PaymentProcessorEntity } from './payment-processor.schema.js';
 import { CommissionScaleEntity, type CommissionRule } from './commission-scale.schema.js';
+import { ChatterCommissionScaleEntity, type ChatterCommissionRule } from './chatter-commission-scale.schema.js';
 import { 
   CreatePaymentProcessorDto, 
   UpdatePaymentProcessorDto, 
@@ -18,6 +19,7 @@ export class FinanceConfigService {
   constructor(
     @InjectModel(PaymentProcessorEntity.name) private readonly paymentProcessorModel: Model<PaymentProcessorEntity>,
     @InjectModel(CommissionScaleEntity.name) private readonly commissionScaleModel: Model<CommissionScaleEntity>,
+    @InjectModel(ChatterCommissionScaleEntity.name) private readonly chatterCommissionScaleModel: Model<ChatterCommissionScaleEntity>,
   ) {}
 
   // === PAYMENT PROCESSORS ===
@@ -290,6 +292,262 @@ export class FinanceConfigService {
     // Ensure the first rule starts at 0
     if (sortedRules[0].minUsd !== 0) {
       throw new Error('First commission rule must start at $0');
+    }
+  }
+
+  // === CHATTER COMMISSION SCALES ===
+
+  async createChatterCommissionScale(
+    data: {
+      name: string;
+      isActive?: boolean;
+      isDefault?: boolean;
+      supernumerarioPercent: number;
+      performanceRules: ChatterCommissionRule[];
+      description?: string;
+    },
+    updatedBy?: string,
+  ) {
+    // Validate rules
+    this.validateChatterCommissionRules(data.performanceRules, data.supernumerarioPercent);
+
+    // If this is set as active, deactivate others
+    if (data.isActive) {
+      await this.chatterCommissionScaleModel.updateMany({}, { isActive: false });
+    }
+
+    // If this is set as default, remove default from others
+    if (data.isDefault) {
+      await this.chatterCommissionScaleModel.updateMany({}, { isDefault: false });
+    }
+
+    const scale = await this.chatterCommissionScaleModel.create({
+      ...data,
+      isActive: data.isActive ?? false,
+      isDefault: data.isDefault ?? false,
+      updatedBy,
+    });
+
+    return scale.toObject();
+  }
+
+  async updateChatterCommissionScale(
+    id: string,
+    data: {
+      name?: string;
+      isActive?: boolean;
+      isDefault?: boolean;
+      supernumerarioPercent?: number;
+      performanceRules?: ChatterCommissionRule[];
+      description?: string;
+    },
+    updatedBy?: string,
+  ) {
+    const existing = await this.chatterCommissionScaleModel.findById(id);
+    if (!existing) {
+      throw new Error('Chatter commission scale not found');
+    }
+
+    // Validate rules if provided
+    if (data.performanceRules || data.supernumerarioPercent !== undefined) {
+      const rules = data.performanceRules || existing.performanceRules;
+      const supPercent = data.supernumerarioPercent ?? existing.supernumerarioPercent;
+      this.validateChatterCommissionRules(rules, supPercent);
+    }
+
+    // If this is set as active, deactivate others
+    if (data.isActive) {
+      await this.chatterCommissionScaleModel.updateMany({ _id: { $ne: id } }, { isActive: false });
+    }
+
+    // If this is set as default, remove default from others
+    if (data.isDefault) {
+      await this.chatterCommissionScaleModel.updateMany({ _id: { $ne: id } }, { isDefault: false });
+    }
+
+    const updated = await this.chatterCommissionScaleModel.findByIdAndUpdate(
+      id,
+      { ...data, updatedBy },
+      { new: true },
+    );
+
+    return updated?.toObject();
+  }
+
+  async deleteChatterCommissionScale(id: string) {
+    const scale = await this.chatterCommissionScaleModel.findById(id);
+    
+    if (!scale) {
+      throw new Error('Chatter commission scale not found');
+    }
+
+    // Don't allow deletion of active scale
+    if (scale.isActive) {
+      throw new Error('Cannot delete active chatter commission scale. Please activate another scale first.');
+    }
+
+    await this.chatterCommissionScaleModel.findByIdAndDelete(id);
+    return { success: true, id };
+  }
+
+  async getChatterCommissionScales() {
+    return this.chatterCommissionScaleModel
+      .find()
+      .sort({ isActive: -1, isDefault: -1, createdAt: -1 })
+      .lean();
+  }
+
+  async getChatterCommissionScale(id: string) {
+    const scale = await this.chatterCommissionScaleModel.findById(id).lean();
+    
+    if (!scale) {
+      throw new Error('Chatter commission scale not found');
+    }
+
+    return scale;
+  }
+
+  async getActiveChatterCommissionScale() {
+    const active = await this.chatterCommissionScaleModel.findOne({ isActive: true }).lean();
+    
+    if (!active) {
+      // Return default if no active scale
+      return this.chatterCommissionScaleModel.findOne({ isDefault: true }).lean();
+    }
+
+    return active;
+  }
+
+  async setActiveChatterCommissionScale(id: string, updatedBy?: string) {
+    // Deactivate all scales
+    await this.chatterCommissionScaleModel.updateMany({}, { isActive: false });
+    
+    // Activate the selected scale
+    const updated = await this.chatterCommissionScaleModel.findByIdAndUpdate(
+      id,
+      { isActive: true, updatedBy },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw new Error('Chatter commission scale not found');
+    }
+
+    return updated.toObject();
+  }
+
+  /**
+   * Calcula el porcentaje de comisión según el cumplimiento de meta
+   * @param goalCompletionPercent Porcentaje de cumplimiento de meta (0-100+)
+   * @param isSupernumerario Si es chatter supernumerario
+   * @returns Porcentaje de comisión a aplicar
+   */
+  async calculateChatterCommissionPercent(
+    goalCompletionPercent: number,
+    isSupernumerario: boolean,
+  ): Promise<{ commissionPercent: number; scaleName: string; rule?: ChatterCommissionRule }> {
+    const activeScale = await this.getActiveChatterCommissionScale();
+    
+    if (!activeScale) {
+      throw new Error('No active chatter commission scale found');
+    }
+
+    // Si es supernumerario, retorna porcentaje fijo
+    if (isSupernumerario) {
+      return {
+        commissionPercent: activeScale.supernumerarioPercent,
+        scaleName: activeScale.name,
+      };
+    }
+
+    // Buscar la regla aplicable según el % de cumplimiento
+    const rule = activeScale.performanceRules.find(r => {
+      return goalCompletionPercent >= r.minPercent && goalCompletionPercent <= r.maxPercent;
+    });
+
+    if (!rule) {
+      // Si no hay regla aplicable, retornar 0
+      this.logger.warn(`No commission rule found for goal completion: ${goalCompletionPercent}%`);
+      return {
+        commissionPercent: 0,
+        scaleName: activeScale.name,
+      };
+    }
+
+    return {
+      commissionPercent: rule.commissionPercent,
+      scaleName: activeScale.name,
+      rule,
+    };
+  }
+
+  async createDefaultChatterCommissionScale(updatedBy?: string) {
+    // Check if default already exists
+    const existing = await this.chatterCommissionScaleModel.findOne({ isDefault: true });
+    if (existing) {
+      return existing.toObject();
+    }
+
+    const defaultRules: ChatterCommissionRule[] = [
+      { minPercent: 90, maxPercent: 100, commissionPercent: 2 },
+      { minPercent: 80, maxPercent: 89, commissionPercent: 1.5 },
+      { minPercent: 70, maxPercent: 79, commissionPercent: 1 },
+      { minPercent: 60, maxPercent: 69, commissionPercent: 0.5 },
+    ];
+
+    return this.createChatterCommissionScale(
+      {
+        name: 'Escala Chatters Default',
+        isDefault: true,
+        isActive: true,
+        supernumerarioPercent: 1, // 1% fijo
+        performanceRules: defaultRules,
+        description: 'Escala comisional predeterminada para chatters según cumplimiento de meta',
+      },
+      updatedBy,
+    );
+  }
+
+  private validateChatterCommissionRules(rules: ChatterCommissionRule[], supernumerarioPercent: number) {
+    if (!rules || rules.length === 0) {
+      throw new Error('At least one performance rule is required');
+    }
+
+    if (supernumerarioPercent < 0 || supernumerarioPercent > 100) {
+      throw new Error('Supernumerario percentage must be between 0-100%');
+    }
+
+    // Sort rules by minPercent
+    const sortedRules = [...rules].sort((a, b) => a.minPercent - b.minPercent);
+
+    // Validate each rule
+    for (let i = 0; i < sortedRules.length; i++) {
+      const rule = sortedRules[i];
+
+      // Validate ranges
+      if (rule.minPercent < 0 || rule.minPercent > 100) {
+        throw new Error(`Invalid minPercent in rule ${i + 1}: ${rule.minPercent}%`);
+      }
+
+      if (rule.maxPercent < 0 || rule.maxPercent > 100) {
+        throw new Error(`Invalid maxPercent in rule ${i + 1}: ${rule.maxPercent}%`);
+      }
+
+      if (rule.minPercent > rule.maxPercent) {
+        throw new Error(`Rule ${i + 1}: minPercent (${rule.minPercent}) cannot be greater than maxPercent (${rule.maxPercent})`);
+      }
+
+      if (rule.commissionPercent < 0 || rule.commissionPercent > 100) {
+        throw new Error(`Invalid commission percentage in rule ${i + 1}: ${rule.commissionPercent}%`);
+      }
+
+      // Check for overlaps with next rule
+      if (i < sortedRules.length - 1) {
+        const nextRule = sortedRules[i + 1];
+        if (rule.maxPercent >= nextRule.minPercent) {
+          throw new Error(`Rule ${i + 1} overlaps with Rule ${i + 2}`);
+        }
+      }
     }
   }
 }

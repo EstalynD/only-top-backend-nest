@@ -12,3 +12,6 @@ export function Permissions(...perms: string[]) {
 export function Roles(...roles: string[]) {
   return applyDecorators(SetMetadata(META_ROLES, roles), UseGuards(RolesGuard));
 }
+
+// Alias para compatibilidad con importaciones existentes
+export const RequirePermissions = Permissions;

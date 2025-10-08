@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { TrmEntity } from './trm.schema.js';
 import { CurrencyEntity } from './currency.schema.js';
 import { SystemConfigEntity } from './system-config.schema.js';
-import { CreateTrmDto, CurrencyCode, CurrencyFormatSpec, ListTrmQueryDto, UpdateCurrencyDto, UpdateTimezoneDto, DisplayFormat } from './dto.js';
+import { CreateTrmDto, CurrencyCode, CurrencyFormatSpec, ListTrmQueryDto, UpdateCurrencyDto, UpdateTimezoneDto, UpdateTimeFormatDto, TimeFormat, DisplayFormat } from './dto.js';
+import { CurrencyConfigService } from '../money/currency-config.service.js';
 
 const DEFAULT_CURRENCIES: Array<Omit<CurrencyFormatSpec, 'sample'> & { code: CurrencyCode }> = [
   { code: 'USD', symbol: '$', minimumFractionDigits: 2, maximumFractionDigits: 2, displayFormat: 'SYMBOL_ONLY', isActive: true },
@@ -18,6 +19,7 @@ const AVAILABLE_TIMEZONES = [
 
 const SYSTEM_CONFIG_KEYS = {
   SELECTED_TIMEZONE: 'selected_timezone',
+  TIME_FORMAT: 'time_format',
 } as const;
 
 @Injectable()
@@ -26,6 +28,8 @@ export class SistemaService {
     @InjectModel(TrmEntity.name) private readonly trmModel: Model<TrmEntity>,
     @InjectModel(CurrencyEntity.name) private readonly currencyModel: Model<CurrencyEntity>,
     @InjectModel(SystemConfigEntity.name) private readonly configModel: Model<SystemConfigEntity>,
+    @Inject(forwardRef(() => CurrencyConfigService))
+    private readonly currencyConfigService: CurrencyConfigService,
   ) {}
 
   async getCurrencies(): Promise<CurrencyFormatSpec[]> {
@@ -51,7 +55,26 @@ export class SistemaService {
     if (!updated) {
       throw new Error(`Currency ${code} not found`);
     }
+    
+    // 🔄 IMPORTANTE: Refrescar caché de formatos de moneda
+    await this.currencyConfigService.refreshCache();
+    console.log(`✅ Currency ${code} updated and cache refreshed`);
+    
     return updated;
+  }
+
+  /**
+   * Refresca el caché de configuraciones de moneda manualmente
+   * Útil para debugging o cuando se actualizan monedas desde otras fuentes
+   */
+  async refreshCurrencyCache(): Promise<{ success: boolean; message: string; configs: any[] }> {
+    await this.currencyConfigService.refreshCache();
+    const configs = this.currencyConfigService.getAllConfigs();
+    return {
+      success: true,
+      message: `Caché refrescado. ${configs.length} monedas cargadas.`,
+      configs,
+    };
   }
 
   getAvailableTimezones() {
@@ -81,6 +104,37 @@ export class SistemaService {
     );
     
     return timezone;
+  }
+
+  async getTimeFormat(): Promise<TimeFormat> {
+    const config = await this.configModel.findOne({ key: SYSTEM_CONFIG_KEYS.TIME_FORMAT }).lean();
+    return (config?.value as TimeFormat) || '24h';
+  }
+
+  async updateTimeFormat(dto: UpdateTimeFormatDto) {
+    const validFormats: TimeFormat[] = ['12h', '24h'];
+    if (!validFormats.includes(dto.format)) {
+      throw new Error(`Invalid time format: ${dto.format}. Must be '12h' or '24h'`);
+    }
+    
+    await this.configModel.findOneAndUpdate(
+      { key: SYSTEM_CONFIG_KEYS.TIME_FORMAT },
+      { 
+        key: SYSTEM_CONFIG_KEYS.TIME_FORMAT,
+        value: dto.format,
+        description: `Selected time format: ${dto.format}`
+      },
+      { upsert: true }
+    );
+    
+    return { format: dto.format };
+  }
+
+  async getAvailableTimeFormats() {
+    return [
+      { format: '24h', label: '24 horas', description: 'Formato de 24 horas (00:00 - 23:59)' },
+      { format: '12h', label: '12 horas', description: 'Formato de 12 horas con AM/PM (12:00 AM - 11:59 PM)' }
+    ];
   }
 
   async createTrm(dto: CreateTrmDto) {
