@@ -91,10 +91,12 @@ export class ModelosController {
     }
 
     try {
-      // Subir a Cloudinary
-      const result = await this.cloudinaryService.uploadFromBuffer(file.buffer, file.originalname, {
+      // Subir a Cloudinary usando uploadBuffer para URLs más simples
+      const result = await this.cloudinaryService.uploadBuffer(file.buffer, {
         folder: 'only-top/model-photos',
         public_id: `model_${Date.now()}`,
+        resource_type: 'image',
+        transformation: [{ quality: 'auto', fetch_format: 'auto' }],
       });
 
       if (!result.success || !result.data) {

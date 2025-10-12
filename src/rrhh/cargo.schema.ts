@@ -23,37 +23,6 @@ export class CargoEntity {
   @Prop({ type: Number, default: 1, min: 1 })
   hierarchyLevel!: number;
 
-  // Salario base estimado (opcional, para referencia)
-  @Prop({ 
-    type: {
-      min: { type: Number, min: 0 },
-      max: { type: Number, min: 0 },
-      currency: { type: String, default: 'COP', uppercase: true }
-    },
-    default: null
-  })
-  salaryRange?: {
-    min: number;
-    max: number;
-    currency: string;
-  } | null;
-
-  // Requisitos del cargo
-  @Prop({ 
-    type: {
-      education: [String],
-      experience: String,
-      skills: [String],
-      languages: [String]
-    },
-    default: null
-  })
-  requirements?: {
-    education: string[];
-    experience: string;
-    skills: string[];
-    languages: string[];
-  } | null;
 
   // Estado activo/inactivo
   @Prop({ type: Boolean, default: true, index: true })
@@ -62,6 +31,10 @@ export class CargoEntity {
   // Orden para mostrar en listas dentro del área
   @Prop({ type: Number, default: 0 })
   sortOrder!: number;
+
+  // Plantilla de contrato específica para este cargo
+  @Prop({ type: String, default: null })
+  contractTemplateId?: string | null;
 
   // Información adicional y auditoría
   @Prop({ type: SchemaTypes.Mixed, default: {} })

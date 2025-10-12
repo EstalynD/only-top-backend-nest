@@ -6,6 +6,7 @@ import { EmpleadoEntity } from './empleado.schema.js';
 import { ContratoEntity } from './contrato.schema.js';
 import { CreateDocumentoDto, UpdateDocumentoDto, ValidarDocumentoDto, RenovarDocumentoDto } from './dto/create-documento.dto.js';
 import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
+import { ContratosService } from './contratos.service.js';
 
 @Injectable()
 export class DocumentosService {
@@ -14,6 +15,7 @@ export class DocumentosService {
     @InjectModel(EmpleadoEntity.name) private empleadoModel: Model<EmpleadoEntity>,
     @InjectModel(ContratoEntity.name) private contratoModel: Model<ContratoEntity>,
     private cloudinaryService: CloudinaryService,
+    private contratosService: ContratosService,
   ) {}
 
   /**
@@ -43,7 +45,32 @@ export class DocumentosService {
       'validacion.validadoPor': usuarioId,
     });
 
-    return await documento.save();
+    const documentoGuardado = await documento.save();
+
+    // Si el documento es de tipo CONTRATO_LABORAL, crear automáticamente un contrato
+    if (createDocumentoDto.tipoDocumento === 'CONTRATO_LABORAL') {
+      try {
+        const contratoCreado = await this.contratosService.crearContratoDesdeDocumento(
+          new Types.ObjectId(createDocumentoDto.empleadoId),
+          documentoGuardado._id,
+          usuarioId
+        );
+
+        // Actualizar el documento para asociarlo con el contrato creado
+        await this.documentoModel.findByIdAndUpdate(documentoGuardado._id, {
+          $set: { contratoId: (contratoCreado as any)._id }
+        });
+
+        // Actualizar el documento guardado con la referencia al contrato
+        documentoGuardado.contratoId = (contratoCreado as any)._id;
+      } catch (error) {
+        console.error('Error creando contrato automáticamente:', error);
+        // No lanzar error para no bloquear la creación del documento
+        // El contrato se puede crear manualmente después
+      }
+    }
+
+    return documentoGuardado;
   }
 
   /**

@@ -84,6 +84,22 @@ export class AttendanceEntity {
     platform: string;
   };
 
+  // Justification fields
+  @Prop({ type: String })
+  justification?: string; // Texto de justificación
+
+  @Prop({ type: String })
+  justifiedBy?: string; // Username quien justificó
+
+  @Prop({ type: String })
+  justifiedByUserId?: string; // User ID quien justificó
+
+  @Prop({ type: Date })
+  justifiedAt?: Date; // Fecha de justificación
+
+  @Prop({ type: String, enum: ['PENDING', 'JUSTIFIED', 'REJECTED'] })
+  justificationStatus?: string; // Estado de la justificación
+
   // Audit fields
   @Prop({ type: String })
   markedBy?: string; // Username who marked

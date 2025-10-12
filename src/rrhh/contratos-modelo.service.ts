@@ -300,8 +300,8 @@ export class ContratosModeloService {
       throw new NotFoundException('Modelo no encontrada');
     }
 
-    // Generar token único
-    const token = crypto.randomBytes(32).toString('hex');
+    // Generar token único robusto (sin depender de índice unique)
+    const token = await this.generateUniqueFirmaToken();
     const expiracion = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
 
     // Actualizar contrato con el token
@@ -338,8 +338,11 @@ export class ContratosModeloService {
   }
 
   async obtenerContratoPorToken(token: string): Promise<ContratoModeloDocument> {
+    // Token hexadecimal ya es lowercase, solo trim por si acaso
+    const normalizedToken = (token || '').trim();
+    
     const contrato = await this.contratoModel
-      .findOne({ tokenFirmaUnico: token })
+      .findOne({ tokenFirmaUnico: normalizedToken })
       .populate('modeloId')
       .populate('procesadorPagoId')
       .populate('comisionEscalonada.escalaId')
@@ -349,8 +352,8 @@ export class ContratosModeloService {
       throw new NotFoundException('Contrato no encontrado o enlace inválido');
     }
 
-    if (contrato.tokenFirmaExpiracion && new Date() > contrato.tokenFirmaExpiracion) {
-      throw new BadRequestException('El enlace de firma ha expirado');
+    if (contrato.tokenFirmaExpiracion && Date.now() > new Date(contrato.tokenFirmaExpiracion).getTime()) {
+      throw new BadRequestException('El enlace de firma ha expirado. Solicita uno nuevo a tu asesor.');
     }
 
     if (contrato.estado !== EstadoContrato.PENDIENTE_FIRMA) {
@@ -361,7 +364,8 @@ export class ContratosModeloService {
   }
 
   async solicitarOtpPorToken(token: string): Promise<{ success: boolean; message: string }> {
-    const contrato = await this.obtenerContratoPorToken(token);
+    const normalizedToken = (token || '').trim();
+    const contrato = await this.obtenerContratoPorToken(normalizedToken);
     const modelo = contrato.modeloId as any;
 
     // Generar código OTP de 6 dígitos
@@ -369,7 +373,7 @@ export class ContratosModeloService {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutos
 
     // Guardar OTP con el token como clave
-    const otpKey = `token_${token}`;
+    const otpKey = `token_${normalizedToken}`;
     otpStore.set(otpKey, { code: otpCode, expiresAt, contratoId: contrato._id.toString() });
 
     // Limpiar OTPs expirados
@@ -398,7 +402,8 @@ export class ContratosModeloService {
   }
 
   async firmarContratoPorToken(token: string, dto: Omit<FirmarContratoDto, 'contratoId'>): Promise<{ success: boolean; contrato: ContratoModeloDocument }> {
-    const contrato = await this.obtenerContratoPorToken(token);
+    const normalizedToken = (token || '').trim();
+    const contrato = await this.obtenerContratoPorToken(normalizedToken);
     const modelo = contrato.modeloId as any;
 
     if (!modelo) {
@@ -416,7 +421,7 @@ export class ContratosModeloService {
     }
 
     // Verificar OTP
-    const otpKey = `token_${token}`;
+    const otpKey = `token_${normalizedToken}`;
     const otpData = otpStore.get(otpKey);
 
     if (!otpData) {
@@ -447,7 +452,8 @@ export class ContratosModeloService {
     };
     contrato.estado = EstadoContrato.FIRMADO;
     contrato.fechaFirma = new Date();
-    contrato.tokenFirmaUnico = null; // Invalidar el token
+  // Invalidar el token eliminando el campo (evitar guardar null)
+  contrato.tokenFirmaUnico = undefined as any;
     contrato.tokenFirmaExpiracion = null;
 
     await contrato.save();
@@ -850,6 +856,17 @@ export class ContratosModeloService {
       borradores,
       rechazados: await this.contratoModel.countDocuments({ estado: EstadoContrato.RECHAZADO }).exec(),
     };
+  }
+  // ========== UTILIDAD: generación de token de firma sin índice único ==========
+  private async generateUniqueFirmaToken(retries = 5): Promise<string> {
+    for (let i = 0; i < retries; i++) {
+      const candidate = crypto.randomBytes(32).toString('hex');
+      const exists = await this.contratoModel.exists({ tokenFirmaUnico: candidate });
+      if (!exists) return candidate;
+      this.logger.warn(`Colisión de token de firma (intento ${i + 1}). Regenerando...`);
+    }
+    // Fallback extremadamente improbable de colisionar
+    return crypto.randomBytes(24).toString('hex') + Date.now().toString(16);
   }
 }
 

@@ -28,9 +28,11 @@ export class ContratoEntity {
   @Prop({ type: String, required: true })
   contenidoContrato!: string; // HTML o texto del contrato generado
 
-  // Plantilla utilizada
-  @Prop({ type: SchemaTypes.ObjectId, ref: 'PlantillaContratoEntity', required: true })
-  plantillaId!: Types.ObjectId;
+  // Clave de la plantilla dinámica utilizada (sistema de templates en memoria)
+  @Prop({ type: String, default: null, trim: true })
+  templateKey?: string | null;
+
+  // Nota: campo de plantilla de BD antigua removido. Usamos templateKey y meta.
 
   // Información de aprobación
   @Prop({ 

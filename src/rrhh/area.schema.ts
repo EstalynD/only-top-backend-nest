@@ -27,6 +27,10 @@ export class AreaEntity {
   @Prop({ type: Number, default: 0 })
   sortOrder!: number;
 
+  // Plantilla de contrato por defecto para esta área
+  @Prop({ type: String, default: null })
+  defaultContractTemplateId?: string | null;
+
   // Información adicional y auditoría
   @Prop({ type: SchemaTypes.Mixed, default: {} })
   meta?: Record<string, any>;

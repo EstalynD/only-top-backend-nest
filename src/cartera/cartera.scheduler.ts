@@ -6,12 +6,13 @@ import { CarteraService } from './cartera.service.js';
  * Scheduler para procesar alertas automáticas de cartera
  * 
  * Ejecuta tareas programadas para:
+ * - Activar facturas en seguimiento cuando llega la fechaCorte
  * - Enviar recordatorios de facturas próximas a vencer
  * - Enviar alertas de facturas vencidas
  * - Enviar alertas de facturas en mora
  * 
  * @author OnlyTop Development Team
- * @version 1.0.0
+ * @version 2.0.0
  * @since 2024
  */
 @Injectable()
@@ -19,6 +20,49 @@ export class CarteraScheduler {
   private readonly logger = new Logger(CarteraScheduler.name);
 
   constructor(private readonly carteraService: CarteraService) {}
+
+  /**
+   * Activa facturas en seguimiento cuando llega su fechaCorte
+   * 
+   * Se ejecuta cada hora para verificar si hay facturas en SEGUIMIENTO
+   * cuya fechaCorte ya llegó y cambiarlas a estado PENDIENTE.
+   * 
+   * Esto implementa el sistema profesional de seguimiento donde las facturas
+   * se crean anticipadamente pero solo se activan en la fecha real de corte
+   * (día 16, día 1, etc.)
+   */
+  @Cron(CronExpression.EVERY_HOUR, {
+    name: 'activar-facturas-seguimiento',
+    timeZone: 'America/Bogota',
+  })
+  async handleActivarFacturasSeguimiento() {
+    this.logger.log('📋 Iniciando cron job: Activar facturas en seguimiento');
+
+    try {
+      const inicio = Date.now();
+
+      // Llamar al método del servicio que activará las facturas
+      const resultado = await this.carteraService.activarFacturasEnSeguimiento();
+
+      const duracion = ((Date.now() - inicio) / 1000).toFixed(2);
+
+      if (resultado.activadas > 0) {
+        this.logger.log(
+          `✅ Cron job completado en ${duracion}s: ${resultado.activadas} facturas activadas`
+        );
+      } else {
+        this.logger.debug(`✅ Cron job completado en ${duracion}s: Sin facturas para activar`);
+      }
+
+      return resultado;
+    } catch (error: any) {
+      this.logger.error(
+        `❌ Error activando facturas en seguimiento: ${error.message}`,
+        error.stack
+      );
+      throw error;
+    }
+  }
 
   /**
    * Procesa alertas automáticas diariamente a las 8:00 AM

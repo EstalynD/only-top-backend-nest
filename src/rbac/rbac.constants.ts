@@ -41,6 +41,7 @@ export const PERMISSIONS: PermissionDef[] = [
   { key: 'rrhh:empleados:update', name: 'Actualizar empleados', module: 'rrhh' },
   { key: 'rrhh:empleados:delete', name: 'Eliminar empleados', module: 'rrhh' },
   { key: 'sistema.empleados.crear_cuenta', name: 'Crear cuenta de usuario para empleado', module: 'sistema' },
+  { key: 'rrhh:empleados:manage_account', name: 'Administrar cuenta de empleado', module: 'rrhh' },
   
   // Permisos RRHH - Contratos
   { key: 'rrhh:contratos:read', name: 'Ver contratos', module: 'rrhh' },
@@ -53,6 +54,13 @@ export const PERMISSIONS: PermissionDef[] = [
   { key: 'rrhh:horas_extras:delete', name: 'Eliminar registros de horas extras', module: 'rrhh' },
   { key: 'rrhh:horas_extras:approve', name: 'Aprobar horas extras', module: 'rrhh' },
   { key: 'rrhh:horas_extras:stats', name: 'Ver estadísticas de horas extras', module: 'rrhh' },
+
+  // Permisos RRHH - Dotación (Endowment)
+  { key: 'rrhh:endowment:create', name: 'Crear registros de dotación', module: 'rrhh' },
+  { key: 'rrhh:endowment:read', name: 'Ver dotación', module: 'rrhh' },
+  { key: 'rrhh:endowment:update', name: 'Actualizar registros de dotación', module: 'rrhh' },
+  { key: 'rrhh:endowment:delete', name: 'Eliminar registros de dotación', module: 'rrhh' },
+  { key: 'rrhh:endowment:stats', name: 'Ver estadísticas de dotación', module: 'rrhh' },
   
   // Permisos Clientes - Modelos
   { key: 'clientes:modelos:create', name: 'Crear modelos/clientes', module: 'clientes' },
@@ -175,7 +183,18 @@ export const ROLES: RoleDef[] = [
   {
     key: 'ADMIN_GLOBAL',
     name: 'Administrador Global',
-    permissions: ['system.admin', 'sistema.config.ver'],
+    permissions: [
+      'system.admin',
+      'sistema.config.ver',
+      // Accesos RRHH - Dotación
+      'rrhh:endowment:read',
+      'rrhh:endowment:create',
+      'rrhh:endowment:update',
+      'rrhh:endowment:delete',
+      'rrhh:endowment:stats',
+      // Accesos RRHH - Administración de Cuentas
+      'rrhh:empleados:manage_account',
+    ],
     meta: { department: 'sistema', level: 100, color: '#ff4757' },
   },
   {

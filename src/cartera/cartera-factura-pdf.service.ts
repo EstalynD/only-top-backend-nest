@@ -34,7 +34,7 @@ interface FacturaInfo {
   numeroFactura: string;
   fechaEmision: string | Date;
   fechaVencimiento: string | Date;
-  estado: 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO' | 'CANCELADO';
+  estado: 'SEGUIMIENTO' | 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO' | 'CANCELADO';
   moneda: 'USD' | 'COP';
   items: ItemFactura[];
   subtotal: number;
@@ -43,6 +43,8 @@ interface FacturaInfo {
   saldoPendiente: number;
   montoPagado: number;
   notas?: string | null;
+  // Metadatos adicionales (ej. periodoDiasInicio/Fin calculados en servicio)
+  meta?: Record<string, any>;
   periodo: {
     anio: number;
     mes: number;
@@ -82,7 +84,7 @@ interface PagoInfo {
   comprobanteUrl?: string;
 }
 
-type EstadoFactura = 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO' | 'CANCELADO';
+type EstadoFactura = 'SEGUIMIENTO' | 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO' | 'CANCELADO';
 
 // ========== CONSTANTES ==========
 const PDF_CONFIG = {
@@ -132,6 +134,7 @@ const SPACING = {
 } as const;
 
 const ESTADO_COLORS: Record<EstadoFactura, string> = {
+  SEGUIMIENTO: '#06b6d4', // Cyan 500
   PENDIENTE: COLORS.WARNING,
   PARCIAL: COLORS.SECONDARY,
   PAGADO: COLORS.SUCCESS,
@@ -140,6 +143,7 @@ const ESTADO_COLORS: Record<EstadoFactura, string> = {
 };
 
 const ESTADO_LABELS: Record<EstadoFactura, string> = {
+  SEGUIMIENTO: 'EN SEGUIMIENTO',
   PENDIENTE: 'PENDIENTE DE PAGO',
   PARCIAL: 'PARCIALMENTE PAGADO',
   PAGADO: 'PAGADO',
@@ -347,14 +351,26 @@ export class CarteraFacturaPdfService {
     const startY = doc.y;
     const periodo = data.factura.periodo;
     
-    let periodoTexto = '';
+    // Determinar el rango real del periodo (puede estar ajustado por fecha de inicio de contrato)
+    const meta = data.factura.meta || {} as any;
+    const diasEnMes = this.getDiasEnMes(periodo.anio, periodo.mes);
+    let diaInicio = 1;
+    let diaFin = diasEnMes;
     if (periodo.quincena === 1) {
-      periodoTexto = `Primera Quincena - ${this.getNombreMes(periodo.mes)} ${periodo.anio} (Días 1-15)`;
+      diaFin = 15;
     } else if (periodo.quincena === 2) {
-      periodoTexto = `Segunda Quincena - ${this.getNombreMes(periodo.mes)} ${periodo.anio} (Días 16-${this.getDiasEnMes(periodo.anio, periodo.mes)})`;
-    } else {
-      periodoTexto = `Mes Completo - ${this.getNombreMes(periodo.mes)} ${periodo.anio}`;
+      diaInicio = 16;
     }
+
+    // Si el servicio guardó el rango real en meta, úsalo
+    if (typeof meta.periodoDiasInicio === 'number') {
+      diaInicio = meta.periodoDiasInicio;
+    }
+    if (typeof meta.periodoDiasFin === 'number') {
+      diaFin = meta.periodoDiasFin;
+    }
+
+    const periodoTexto = `Periodo: ${diaInicio}-${diaFin} ${this.getNombreMes(periodo.mes)} ${periodo.anio}`;
 
     doc
       .roundedRect(PDF_CONFIG.MARGIN, startY, PDF_CONFIG.CONTENT_WIDTH, 40, 5)

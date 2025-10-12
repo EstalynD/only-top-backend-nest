@@ -99,14 +99,12 @@ export class SistemaController {
 
   // Obtener formatos de hora disponibles
   @Get('time-formats/available')
-  @Permissions('sistema.config.ver')
   availableTimeFormats() {
     return this.sistema.getAvailableTimeFormats();
   }
 
   // Obtener formato de hora seleccionado
   @Get('time-formats/selected')
-  @Permissions('sistema.config.ver')
   selectedTimeFormat() {
     return this.sistema.getTimeFormat();
   }

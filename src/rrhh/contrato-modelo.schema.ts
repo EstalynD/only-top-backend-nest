@@ -115,8 +115,8 @@ export class ContratoModeloEntity {
   firma?: FirmaDigital | null;
 
   // Token único para firma externa
-  @Prop({ type: String, default: null, unique: true, sparse: true })
-  tokenFirmaUnico?: string | null;
+  @Prop({ type: String })
+  tokenFirmaUnico?: string;
 
   @Prop({ type: Date, default: null })
   tokenFirmaExpiracion?: Date | null;
@@ -149,4 +149,5 @@ export const ContratoModeloSchema = SchemaFactory.createForClass(ContratoModeloE
 ContratoModeloSchema.index({ modeloId: 1, estado: 1 });
 ContratoModeloSchema.index({ fechaInicio: -1 });
 ContratoModeloSchema.index({ estado: 1, createdAt: -1 });
+
 

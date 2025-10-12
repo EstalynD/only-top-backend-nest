@@ -26,6 +26,9 @@ export class AttendanceConfigService {
   }
 
   async updateAttendanceConfig(dto: UpdateAttendanceConfigDto, updatedBy?: string) {
+    // Cargar config actual para poder realizar merge (preservar asignaciones)
+    const existing = await this.attendanceConfigModel.findOne({ key: ATTENDANCE_CONFIG_KEY }).lean();
+
     // Validate time slots and shifts if provided
     if (dto.fixedSchedule) {
       this.validateFixedSchedule(dto.fixedSchedule);
@@ -47,32 +50,66 @@ export class AttendanceConfigService {
     // Normalize and validate rotating shifts if provided (DTO -> Entity)
     let normalizedShifts: Shift[] | undefined;
     if (dto.rotatingShifts) {
-      normalizedShifts = dto.rotatingShifts.map((s) => ({
-        id: s.id,
-        name: s.name,
-        type: s.type,
-        timeSlot: {
-          startTime: s.timeSlot.startTime,
-          endTime: s.timeSlot.endTime,
-        },
-        description: s.description,
-        isActive: s.isActive ?? true,
-        // PRESERVE ASSIGNMENTS
-        assignedAreas: Array.isArray((s as any).assignedAreas) ? Array.from(new Set((s as any).assignedAreas)) : [],
-        assignedCargos: Array.isArray((s as any).assignedCargos) ? Array.from(new Set((s as any).assignedCargos)) : [],
-      }));
+      // Hacemos merge shift por shift: si existe en config previa y no vienen arrays de asignaciones, preservamos.
+      const previousShifts = Array.isArray(existing?.rotatingShifts) ? existing!.rotatingShifts : [];
+      normalizedShifts = dto.rotatingShifts.map((s) => {
+        const prev = previousShifts.find(ps => ps.id === s.id);
+        const providedAreas = (s as any).assignedAreas;
+        const providedCargos = (s as any).assignedCargos;
+        const assignedAreas = Array.isArray(providedAreas)
+          ? Array.from(new Set(providedAreas))
+          : (prev?.assignedAreas ? [...prev.assignedAreas] : []);
+        const assignedCargos = Array.isArray(providedCargos)
+          ? Array.from(new Set(providedCargos))
+          : (prev?.assignedCargos ? [...prev.assignedCargos] : []);
+        return {
+          id: s.id,
+            name: s.name,
+            type: s.type,
+            timeSlot: {
+              startTime: s.timeSlot.startTime,
+              endTime: s.timeSlot.endTime,
+            },
+            description: s.description,
+            isActive: s.isActive ?? (prev ? prev.isActive : true),
+            assignedAreas,
+            assignedCargos,
+        } as Shift;
+      });
       this.validateRotatingShifts(normalizedShifts);
     }
 
+    // Merge para fixedSchedule: si dto.fixedSchedule existe pero no incluye assignedAreas/assignedCargos, mantener las existentes
+    let mergedFixedSchedule: FixedSchedule | undefined;
+    if (dto.fixedSchedule) {
+      const prevFixed = existing?.fixedSchedule;
+      mergedFixedSchedule = {
+        ...prevFixed, // base previa
+        ...dto.fixedSchedule, // override campos enviados
+        assignedAreas: Array.isArray((dto.fixedSchedule as any).assignedAreas)
+          ? Array.from(new Set((dto.fixedSchedule as any).assignedAreas))
+          : (prevFixed?.assignedAreas || []),
+        assignedCargos: Array.isArray((dto.fixedSchedule as any).assignedCargos)
+          ? Array.from(new Set((dto.fixedSchedule as any).assignedCargos))
+          : (prevFixed?.assignedCargos || []),
+      } as FixedSchedule;
+    }
+
+    const updatePayload: any = {
+      ...dto,
+      ...(normalizedShifts ? { rotatingShifts: normalizedShifts } : {}),
+      ...(mergedFixedSchedule ? { fixedSchedule: mergedFixedSchedule } : {}),
+      ...(attendanceEnabledFrom !== undefined ? { attendanceEnabledFrom } : {}),
+      updatedBy,
+      updatedAt: new Date()
+    };
+    // Si no se mandó fixedSchedule en dto NO tocar fixedSchedule existente
+    if (!mergedFixedSchedule && 'fixedSchedule' in updatePayload) {
+      delete updatePayload.fixedSchedule;
+    }
     const updated = await this.attendanceConfigModel.findOneAndUpdate(
       { key: ATTENDANCE_CONFIG_KEY },
-      {
-        ...dto,
-        ...(normalizedShifts ? { rotatingShifts: normalizedShifts } : {}),
-        ...(attendanceEnabledFrom !== undefined ? { attendanceEnabledFrom } : {}),
-        updatedBy,
-        updatedAt: new Date()
-      },
+      updatePayload,
       { new: true, upsert: true }
     );
 
@@ -461,6 +498,8 @@ export class AttendanceConfigService {
       overtimeEnabled: false,
       timezone: 'America/Bogota',
       description: 'Configuración de asistencia con horarios fijos y turnos rotativos disponibles',
+      supernumeraryMode: 'REPLACEMENT',
+      allowedReplacementShifts: ['shift_am', 'shift_pm', 'shift_madrugada'],
       updatedBy: updatedBy || 'system'
     };
 

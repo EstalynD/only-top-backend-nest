@@ -117,6 +117,27 @@ export class PdfGeneratorService {
   private onPageAdded?: () => void;
 
   /**
+   * Genera un PDF de contrato laboral con formato profesional
+   */
+  async generateLaborContractPdf(contractData: any): Promise<Buffer> {
+    try {
+      this.validateLaborContractData(contractData);
+
+      // Marcar timestamp de generación para usar en footer consistente
+      this.currentGeneratedAt = new Date();
+
+      const doc = this.createPdfDocument(contractData);
+      const pdfBuffer = await this.generatePdfBuffer(doc, contractData);
+
+      this.logger.log(`PDF de contrato laboral generado exitosamente: ${contractData.laboral.numeroContrato}`);
+      return pdfBuffer;
+    } catch (error) {
+      this.logger.error(`Error generando PDF de contrato laboral: ${contractData.laboral.numeroContrato}`, error);
+      throw new Error(`No se pudo generar el PDF del contrato laboral: ${error.message}`);
+    }
+  }
+
+  /**
    * Genera un PDF de contrato de modelo con formato profesional
    */
   async generateContratoModeloPdf(contratoData: ContratoData): Promise<Buffer> {
@@ -181,8 +202,20 @@ export class PdfGeneratorService {
     });
   }
 
-  private buildPdfContent(doc: PDFKit.PDFDocument, data: ContratoData): void {
-    // Construir el contenido del PDF
+  private buildPdfContent(doc: PDFKit.PDFDocument, data: ContratoData | any): void {
+    // Determinar si es contrato de modelo o laboral
+    if (data.laboral) {
+      // Es un contrato laboral
+      this.buildLaborContractContent(doc, data);
+    } else {
+      // Es un contrato de modelo (lógica existente)
+      this.buildModeloContractContent(doc, data);
+    }
+    // Footers ahora se dibujan de forma uniforme al final en drawFooters()
+  }
+
+  private buildModeloContractContent(doc: PDFKit.PDFDocument, data: ContratoData): void {
+    // Construir el contenido del PDF de modelo
     this.addHeader(doc, data);
     this.addContratoInfo(doc, data);
     this.addModeloInfo(doc, data);
@@ -192,7 +225,20 @@ export class PdfGeneratorService {
     if (data.firma) {
       this.addFirmaDigital(doc, data);
     }
-    // Footers ahora se dibujan de forma uniforme al final en drawFooters()
+  }
+
+  private buildLaborContractContent(doc: PDFKit.PDFDocument, data: any): void {
+    // Construir el contenido del PDF laboral
+    this.addLaborContractHeader(doc, data);
+    this.addEmployeeInfo(doc, data);
+    this.addLaborInfo(doc, data);
+    this.addWorkSchedule(doc, data);
+    this.addResponsibilities(doc, data);
+    this.addBenefits(doc, data);
+    this.addObligations(doc, data);
+    this.addTerminationClause(doc, data);
+    this.addConfidentialityClause(doc, data);
+    this.addIntellectualPropertyClause(doc, data);
   }
 
   // ========== FOOTER POR PÁGINA ==========
@@ -248,7 +294,8 @@ export class PdfGeneratorService {
     };
 
     // Línea superior: hora + Documento ID
-  drawCenteredLine(`${hora} · Documento ID: ${data.numeroContrato}`, FONT_SIZES.TINY, true, COLORS.GRAY[600], 1);
+    const docId = (data as any)?.laboral?.numeroContrato || (data as any)?.numeroContrato || 'N/A';
+    drawCenteredLine(`${hora} · Documento ID: ${docId}`, FONT_SIZES.TINY, true, COLORS.GRAY[600], 1);
     // Texto legal
   drawCenteredLine('Este documento ha sido generado digitalmente y tiene validez legal.', FONT_SIZES.TINY, false, COLORS.GRAY[400], 1);
     // Información de la empresa
@@ -260,6 +307,28 @@ export class PdfGeneratorService {
   }
 
   // ========== VALIDACIÓN ==========
+
+  private validateLaborContractData(data: any): void {
+    const requiredFields = ['empleado', 'laboral', 'terminos'];
+    
+    for (const field of requiredFields) {
+      if (!data[field]) {
+        throw new Error(`Campo requerido faltante: ${field}`);
+      }
+    }
+
+    if (!data.empleado.nombreCompleto || !data.empleado.numeroIdentificacion) {
+      throw new Error('Información del empleado incompleta');
+    }
+
+    if (!data.laboral.numeroContrato || !data.laboral.area || !data.laboral.cargo) {
+      throw new Error('Información laboral incompleta');
+    }
+
+    if (!data.terminos.responsibilities || data.terminos.responsibilities.length === 0) {
+      throw new Error('Responsabilidades no especificadas');
+    }
+  }
 
   private validateContratoData(data: ContratoData): void {
     const requiredFields = ['numeroContrato', 'fechaInicio', 'estado', 'tipoComision', 'modelo'];
@@ -852,8 +921,287 @@ export class PdfGeneratorService {
     return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   }
 
+  private formatCurrencyWithCurrency(amount: number, currency: string = 'COP'): string {
+    if (currency === 'COP') {
+      return `$${amount.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+    }
+    return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
   private truncateText(text: string, maxLength: number): string {
     if (!text) return 'N/A';
     return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+  }
+
+  // ========== MÉTODOS PARA CONTRATOS LABORALES ==========
+
+  private addLaborContractHeader(doc: PDFKit.PDFDocument, data: any): void {
+    // Header de la primera página
+    this.renderLaborContractHeader(doc, data);
+    this.addDivider(doc);
+    doc.moveDown(0.3);
+
+    // Repetir en nuevas páginas
+    this.onPageAdded = () => {
+      this.renderLaborContractHeader(doc, data, true);
+      this.addDivider(doc);
+      doc.moveDown(0.2);
+    };
+    doc.on('pageAdded', this.onPageAdded);
+  }
+
+  private renderLaborContractHeader(doc: PDFKit.PDFDocument, data: any, compact = false) {
+    const top = PDF_CONFIG.MARGIN - 5;
+    doc.x = PDF_CONFIG.MARGIN;
+    doc.y = top;
+
+    doc
+      .fontSize(compact ? 16 : FONT_SIZES.TITLE)
+      .fillColor(COLORS.PRIMARY)
+      .font('Helvetica-Bold')
+      .text('CONTRATO DE TRABAJO', {
+        align: 'center',
+        width: PDF_CONFIG.CONTENT_WIDTH,
+      })
+      .moveDown(compact ? 0.2 : 0.4);
+
+    if (!compact) {
+      doc
+        .fontSize(FONT_SIZES.BODY)
+        .fillColor(COLORS.GRAY[500])
+        .font('Helvetica')
+        .text('OnlyTop - Agencia de Gestión de Contenido Digital', {
+          align: 'center',
+          width: PDF_CONFIG.CONTENT_WIDTH,
+        })
+        .moveDown(0.3);
+
+      doc
+        .fontSize(FONT_SIZES.SUBSECTION)
+        .fillColor(COLORS.GRAY[700])
+        .font('Helvetica-Bold')
+        .text(`Número de Contrato: ${data.laboral.numeroContrato}`, {
+          align: 'center',
+          width: PDF_CONFIG.CONTENT_WIDTH,
+        })
+        .moveDown(0.4);
+    }
+  }
+
+  private addEmployeeInfo(doc: PDFKit.PDFDocument, data: any): void {
+    this.addSectionTitle(doc, 'INFORMACIÓN DEL EMPLEADO');
+
+    const fields = [
+      { label: 'Nombre Completo', value: data.empleado.nombreCompleto },
+      { label: 'Número de Identificación', value: data.empleado.numeroIdentificacion },
+      { label: 'Correo Electrónico', value: data.empleado.correoElectronico },
+      { label: 'Teléfono', value: data.empleado.telefono },
+      { label: 'Dirección', value: data.empleado.direccion },
+      { label: 'Ciudad', value: data.empleado.ciudad },
+      { label: 'País', value: data.empleado.pais },
+      { label: 'Fecha de Nacimiento', value: this.formatDate(data.empleado.fechaNacimiento) },
+    ];
+
+    this.addTwoColumnFields(doc, fields);
+    this.addDivider(doc);
+  }
+
+  private addLaborInfo(doc: PDFKit.PDFDocument, data: any): void {
+    this.addSectionTitle(doc, 'INFORMACIÓN LABORAL');
+
+    const fields = [
+      { label: 'Área', value: data.laboral.area },
+      { label: 'Cargo', value: data.laboral.cargo },
+      { label: 'Tipo de Contrato', value: data.laboral.tipoContrato },
+      { label: 'Salario', value: this.formatCurrencyWithCurrency(data.laboral.salario.monto, data.laboral.salario.moneda) },
+      { label: 'Fecha de Inicio', value: this.formatDate(data.laboral.fechaInicio) },
+      { label: 'Número de Contrato', value: data.laboral.numeroContrato },
+    ];
+
+    this.addTwoColumnFields(doc, fields);
+    this.addDivider(doc);
+  }
+
+  private addWorkSchedule(doc: PDFKit.PDFDocument, data: any): void {
+    this.addSectionTitle(doc, 'HORARIO DE TRABAJO');
+
+    const schedule = data.terminos.workSchedule;
+    const width = PDF_CONFIG.CONTENT_WIDTH;
+
+    doc.fontSize(FONT_SIZES.BODY).fillColor(COLORS.GRAY[700]).font('Helvetica');
+
+    if (schedule.type === 'FIXED' && schedule.schedule) {
+      const scheduleText = `El empleado trabajará bajo horario fijo de lunes a viernes de 9:00 AM a 6:00 PM, con una hora de almuerzo de 1:00 PM a 2:00 PM.`;
+      const h = doc.heightOfString(scheduleText, { width, align: 'justify', lineGap: 2 });
+      this.ensureSpace(doc, h + 6);
+      doc.text(scheduleText, { width, align: 'justify', lineGap: 2 });
+    } else if (schedule.type === 'ROTATING' && schedule.shifts) {
+      doc.text('El empleado trabajará bajo sistema de turnos rotativos:', { width });
+      doc.moveDown(0.3);
+      
+      schedule.shifts.forEach((shift: any, index: number) => {
+        const shiftText = `${index + 1}. ${shift.name}: ${shift.timeSlot.startTime} - ${shift.timeSlot.endTime}`;
+        const h = doc.heightOfString(shiftText, { width, lineGap: 1 });
+        this.ensureSpace(doc, h + 4);
+        doc.text(shiftText, { width, lineGap: 1 });
+      });
+    }
+
+    doc.moveDown(0.8);
+    this.addDivider(doc);
+  }
+
+  private addResponsibilities(doc: PDFKit.PDFDocument, data: any): void {
+    this.addSectionTitle(doc, 'RESPONSABILIDADES Y FUNCIONES');
+
+    const responsibilities = data.terminos.responsibilities;
+    doc.fontSize(FONT_SIZES.BODY).fillColor(COLORS.GRAY[700]).font('Helvetica');
+
+    const width = PDF_CONFIG.CONTENT_WIDTH;
+
+    responsibilities.forEach((responsibility: string, idx: number) => {
+      const para = `${idx + 1}. ${responsibility}`;
+      const h = doc.heightOfString(para, { width, align: 'justify', lineGap: 2 });
+      this.ensureSpace(doc, h + 6);
+      doc.text(para, {
+        width,
+        align: 'justify',
+        lineGap: 2,
+      });
+      doc.moveDown(0.5);
+    });
+
+    this.addDivider(doc);
+  }
+
+  private addBenefits(doc: PDFKit.PDFDocument, data: any): void {
+    this.addSectionTitle(doc, 'BENEFICIOS Y PRESTACIONES');
+
+    const benefits = data.terminos.benefits;
+    if (!benefits || benefits.length === 0) {
+      doc.fontSize(FONT_SIZES.BODY).fillColor(COLORS.GRAY[700]).font('Helvetica');
+      doc.text('Los beneficios y prestaciones se regirán según la legislación laboral vigente y las políticas internas de la empresa.', {
+        width: PDF_CONFIG.CONTENT_WIDTH,
+        align: 'justify',
+        lineGap: 2,
+      });
+    } else {
+      doc.fontSize(FONT_SIZES.BODY).fillColor(COLORS.GRAY[700]).font('Helvetica');
+      const width = PDF_CONFIG.CONTENT_WIDTH;
+
+      benefits.forEach((benefit: string, idx: number) => {
+        const para = `${idx + 1}. ${benefit}`;
+        const h = doc.heightOfString(para, { width, align: 'justify', lineGap: 2 });
+        this.ensureSpace(doc, h + 6);
+        doc.text(para, {
+          width,
+          align: 'justify',
+          lineGap: 2,
+        });
+        doc.moveDown(0.5);
+      });
+    }
+
+    this.addDivider(doc);
+  }
+
+  private addObligations(doc: PDFKit.PDFDocument, data: any): void {
+    this.addSectionTitle(doc, 'OBLIGACIONES DEL EMPLEADO');
+
+    const obligations = data.terminos.obligations;
+    doc.fontSize(FONT_SIZES.BODY).fillColor(COLORS.GRAY[700]).font('Helvetica');
+
+    const width = PDF_CONFIG.CONTENT_WIDTH;
+
+    obligations.forEach((obligation: string, idx: number) => {
+      const para = `${idx + 1}. ${obligation}`;
+      const h = doc.heightOfString(para, { width, align: 'justify', lineGap: 2 });
+      this.ensureSpace(doc, h + 6);
+      doc.text(para, {
+        width,
+        align: 'justify',
+        lineGap: 2,
+      });
+      doc.moveDown(0.5);
+    });
+
+    this.addDivider(doc);
+  }
+
+  private addTerminationClause(doc: PDFKit.PDFDocument, data: any): void {
+    this.addSectionTitle(doc, 'TERMINACIÓN DEL CONTRATO');
+
+    const termination = data.terminos.termination;
+    doc.fontSize(FONT_SIZES.BODY).fillColor(COLORS.GRAY[700]).font('Helvetica');
+
+    const width = PDF_CONFIG.CONTENT_WIDTH;
+
+    // Período de preaviso
+    const noticeText = `Período de preaviso: ${termination.noticePeriod}`;
+    const h1 = doc.heightOfString(noticeText, { width, align: 'justify', lineGap: 2 });
+    this.ensureSpace(doc, h1 + 6);
+    doc.text(noticeText, { width, align: 'justify', lineGap: 2 });
+    doc.moveDown(0.5);
+
+    // Condiciones de terminación
+    termination.conditions.forEach((condition: string, idx: number) => {
+      const para = `${idx + 1}. ${condition}`;
+      const h = doc.heightOfString(para, { width, align: 'justify', lineGap: 2 });
+      this.ensureSpace(doc, h + 6);
+      doc.text(para, {
+        width,
+        align: 'justify',
+        lineGap: 2,
+      });
+      doc.moveDown(0.5);
+    });
+
+    this.addDivider(doc);
+  }
+
+  private addConfidentialityClause(doc: PDFKit.PDFDocument, data: any): void {
+    this.addSectionTitle(doc, 'CLÁUSULA DE CONFIDENCIALIDAD');
+
+    const confidentiality = data.terminos.confidentiality;
+    doc.fontSize(FONT_SIZES.BODY).fillColor(COLORS.GRAY[700]).font('Helvetica');
+
+    const width = PDF_CONFIG.CONTENT_WIDTH;
+
+    confidentiality.forEach((clause: string, idx: number) => {
+      const para = `${idx + 1}. ${clause}`;
+      const h = doc.heightOfString(para, { width, align: 'justify', lineGap: 2 });
+      this.ensureSpace(doc, h + 6);
+      doc.text(para, {
+        width,
+        align: 'justify',
+        lineGap: 2,
+      });
+      doc.moveDown(0.5);
+    });
+
+    this.addDivider(doc);
+  }
+
+  private addIntellectualPropertyClause(doc: PDFKit.PDFDocument, data: any): void {
+    this.addSectionTitle(doc, 'PROPIEDAD INTELECTUAL');
+
+    const ip = data.terminos.intellectualProperty;
+    doc.fontSize(FONT_SIZES.BODY).fillColor(COLORS.GRAY[700]).font('Helvetica');
+
+    const width = PDF_CONFIG.CONTENT_WIDTH;
+
+    ip.forEach((clause: string, idx: number) => {
+      const para = `${idx + 1}. ${clause}`;
+      const h = doc.heightOfString(para, { width, align: 'justify', lineGap: 2 });
+      this.ensureSpace(doc, h + 6);
+      doc.text(para, {
+        width,
+        align: 'justify',
+        lineGap: 2,
+      });
+      doc.moveDown(0.5);
+    });
+
+    this.addDivider(doc);
   }
 }

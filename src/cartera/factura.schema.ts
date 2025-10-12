@@ -3,6 +3,7 @@ import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 
 // Estados de factura
 export enum EstadoFactura {
+  SEGUIMIENTO = 'SEGUIMIENTO', // Factura creada pero aún no enviada (esperando fecha de corte)
   PENDIENTE = 'PENDIENTE',
   PARCIAL = 'PARCIAL',
   PAGADO = 'PAGADO',
@@ -66,17 +67,20 @@ export class FacturaEntity {
 
   // Fechas
   @Prop({ type: Date, required: true, index: true })
-  fechaEmision!: Date;
+  fechaEmision!: Date; // Fecha de creación de la factura (puede estar en SEGUIMIENTO)
 
   @Prop({ type: Date, required: true, index: true })
-  fechaVencimiento!: Date;
+  fechaCorte!: Date; // Fecha real de facturación según periodicidad (día 16, día 1, etc.)
+
+  @Prop({ type: Date, required: true, index: true })
+  fechaVencimiento!: Date; // Fecha límite de pago (fechaCorte + días de vencimiento)
 
   // Estado
   @Prop({ 
     type: String, 
     required: true, 
     enum: Object.values(EstadoFactura), 
-    default: EstadoFactura.PENDIENTE,
+    default: EstadoFactura.SEGUIMIENTO, // Por defecto en seguimiento hasta llegar a fechaCorte
     index: true
   })
   estado!: EstadoFactura;
@@ -136,6 +140,8 @@ export const FacturaSchema = SchemaFactory.createForClass(FacturaEntity);
 FacturaSchema.index({ modeloId: 1, estado: 1 });
 FacturaSchema.index({ contratoId: 1, estado: 1 });
 FacturaSchema.index({ 'periodo.anio': 1, 'periodo.mes': 1 });
+FacturaSchema.index({ 'periodo.anio': 1, 'periodo.mes': 1, 'periodo.quincena': 1, modeloId: 1 }); // Evitar duplicados por periodo
+FacturaSchema.index({ fechaCorte: 1, estado: 1 }); // Para scheduler de activación
 FacturaSchema.index({ fechaVencimiento: 1, estado: 1 });
 FacturaSchema.index({ estado: 1, fechaEmision: -1 });
 // numeroFactura ya tiene unique: true en @Prop, no necesita índice adicional

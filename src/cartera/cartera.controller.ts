@@ -743,13 +743,8 @@ export class CarteraController {
   @Get('configuracion')
   @RequirePermissions('cartera:config:read')
   async obtenerConfiguracion() {
-    // TODO: Crear método público obtenerConfiguracionPublica() en CarteraService
-    // const config = await this.carteraService.obtenerConfiguracionPublica();
-    
-    return {
-      success: false,
-      message: 'Consulta de configuración en desarrollo',
-    };
+    const config = await this.carteraService.obtenerConfiguracionPublica();
+    return { success: true, data: config };
   }
 
   /**
@@ -763,13 +758,8 @@ export class CarteraController {
     @Request() req: any,
   ) {
     this.logger.log(`Usuario ${req.user.username} actualizando configuración de cartera`);
-    
-    // TODO: Implementar método actualizarConfiguracion() en CarteraService
-    
-    return {
-      success: false,
-      message: 'Actualización de configuración en desarrollo.',
-    };
+    const config = await this.carteraService.actualizarConfiguracion(dto, req.user.sub);
+    return { success: true, data: config };
   }
 
   // ========== DASHBOARD Y ESTADÍSTICAS ==========

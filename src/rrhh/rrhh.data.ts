@@ -45,12 +45,6 @@ export const DEFAULT_CARGOS = [
     areaCode: 'MKT',
     description: 'Gestión de redes sociales y comunidades digitales',
     hierarchyLevel: 2,
-    requirements: {
-      education: ['Comunicación Social', 'Marketing Digital', 'Publicidad'],
-      experience: '1-2 años en manejo de redes sociales',
-      skills: ['Creatividad', 'Redacción', 'Diseño básico', 'Análisis de métricas'],
-      languages: ['Español nativo', 'Inglés básico']
-    },
     sortOrder: 1
   },
   {
@@ -59,12 +53,6 @@ export const DEFAULT_CARGOS = [
     areaCode: 'MKT',
     description: 'Creación de contenido visual y audiovisual para campañas',
     hierarchyLevel: 2,
-    requirements: {
-      education: ['Comunicación Audiovisual', 'Diseño Gráfico', 'Fotografía'],
-      experience: '2-3 años en producción audiovisual',
-      skills: ['Fotografía', 'Edición de video', 'Iluminación', 'Post-producción'],
-      languages: ['Español nativo']
-    },
     sortOrder: 2
   },
   // Traffic
@@ -74,12 +62,6 @@ export const DEFAULT_CARGOS = [
     areaCode: 'TRF',
     description: 'Especialista en gestión de tráfico digital y optimización de campañas',
     hierarchyLevel: 2,
-    requirements: {
-      education: ['Marketing Digital', 'Publicidad', 'Ingeniería de Sistemas'],
-      experience: '2-4 años en traffic digital',
-      skills: ['Google Ads', 'Facebook Ads', 'Analytics', 'Optimización de conversiones'],
-      languages: ['Español nativo', 'Inglés intermedio']
-    },
     sortOrder: 1
   },
   // Sales
@@ -89,12 +71,6 @@ export const DEFAULT_CARGOS = [
     areaCode: 'SLS',
     description: 'Especialista en conversaciones y ventas por chat',
     hierarchyLevel: 3,
-    requirements: {
-      education: ['Bachillerato completo'],
-      experience: '6 meses - 1 año en ventas o atención al cliente',
-      skills: ['Comunicación escrita', 'Persuasión', 'Empatía', 'Multitasking'],
-      languages: ['Español nativo']
-    },
     sortOrder: 1
   },
   {
@@ -103,12 +79,6 @@ export const DEFAULT_CARGOS = [
     areaCode: 'SLS',
     description: 'Chatter de apoyo para picos de demanda',
     hierarchyLevel: 4,
-    requirements: {
-      education: ['Bachillerato en curso o completo'],
-      experience: 'Sin experiencia requerida',
-      skills: ['Comunicación básica', 'Disponibilidad horaria', 'Aprendizaje rápido'],
-      languages: ['Español nativo']
-    },
     sortOrder: 2
   },
   {
@@ -117,12 +87,6 @@ export const DEFAULT_CARGOS = [
     areaCode: 'SLS',
     description: 'Líder de equipo de chatters, supervisión y entrenamiento',
     hierarchyLevel: 2,
-    requirements: {
-      education: ['Técnico en ventas', 'Administración', 'Psicología'],
-      experience: '2-3 años en ventas y 1 año en liderazgo',
-      skills: ['Liderazgo', 'Coaching', 'Análisis de métricas', 'Resolución de conflictos'],
-      languages: ['Español nativo']
-    },
     sortOrder: 3
   },
   // Recruitment
@@ -132,12 +96,6 @@ export const DEFAULT_CARGOS = [
     areaCode: 'REC',
     description: 'Especialista en cierre de ventas de alto valor',
     hierarchyLevel: 2,
-    requirements: {
-      education: ['Administración', 'Psicología', 'Comunicación'],
-      experience: '3-5 años en ventas consultivas',
-      skills: ['Cierre de ventas', 'Negociación', 'CRM', 'Análisis de objeciones'],
-      languages: ['Español nativo', 'Inglés intermedio-avanzado']
-    },
     sortOrder: 1
   },
   // Administrativo
@@ -147,12 +105,6 @@ export const DEFAULT_CARGOS = [
     areaCode: 'ADM',
     description: 'Gerente administrativo, supervisión general de operaciones',
     hierarchyLevel: 1,
-    requirements: {
-      education: ['Administración de Empresas', 'Ingeniería Industrial', 'MBA'],
-      experience: '5+ años en gestión administrativa',
-      skills: ['Liderazgo', 'Planificación estratégica', 'Gestión de equipos', 'Análisis financiero'],
-      languages: ['Español nativo', 'Inglés avanzado']
-    },
     sortOrder: 1
   },
   {
@@ -161,12 +113,6 @@ export const DEFAULT_CARGOS = [
     areaCode: 'ADM',
     description: 'Asistente de gerencia, apoyo administrativo y organizacional',
     hierarchyLevel: 2,
-    requirements: {
-      education: ['Técnico en administración', 'Secretariado ejecutivo'],
-      experience: '2-3 años como asistente administrativo',
-      skills: ['Organización', 'Microsoft Office avanzado', 'Comunicación', 'Gestión de agenda'],
-      languages: ['Español nativo', 'Inglés intermedio']
-    },
     sortOrder: 2
   }
 ];

@@ -1,4 +1,4 @@
-import { IsDateString, IsNotEmpty, IsNumber, IsObject, IsOptional, Min, IsBoolean, IsArray, ValidateNested, Max } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsNumber, IsObject, IsOptional, Min, IsBoolean, IsArray, ValidateNested, Max, IsEnum, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateTrmDto {
@@ -415,6 +415,26 @@ export class UpdateAttendanceConfigDto {
   @IsOptional()
   @IsDateString()
   attendanceEnabledFrom?: string;
+
+  // ========== CONFIGURACIÓN DE SUPERNUMERARIOS ==========
+  
+  // Modalidad de trabajo del supernumerario: REPLACEMENT (reemplaza turnos) o FIXED_SCHEDULE (horario fijo)
+  @IsOptional()
+  @IsEnum(['REPLACEMENT', 'FIXED_SCHEDULE'])
+  supernumeraryMode?: 'REPLACEMENT' | 'FIXED_SCHEDULE';
+
+  // IDs de los turnos que el supernumerario puede cubrir en modo REPLACEMENT
+  // Ejemplo: ['shift_am', 'shift_pm'] permite cubrir mañana y tarde, pero no madrugada
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowedReplacementShifts?: string[];
+
+  // Horario fijo específico para supernumerarios cuando está en modo FIXED_SCHEDULE
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FixedScheduleDto)
+  supernumeraryFixedSchedule?: FixedScheduleDto;
 }
 
 export type CurrencyFormatSpec = {

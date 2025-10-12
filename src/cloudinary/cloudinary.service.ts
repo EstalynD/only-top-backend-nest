@@ -470,6 +470,52 @@ export class CloudinaryService {
       ...params,
     };
   }
+
+  /**
+   * Normaliza una URL de Cloudinary para asegurar que sea accesible
+   * Convierte URLs con transformaciones automáticas a URLs simples
+   */
+  normalizeImageUrl(url: string): string {
+    if (!url || !url.includes('cloudinary.com')) {
+      return url;
+    }
+
+    try {
+      // Si la URL ya es simple (sin transformaciones automáticas), devolverla tal como está
+      if (!url.includes('/auto/upload/') && !url.includes('/upload/s--')) {
+        return url;
+      }
+
+      // Extraer el public_id de la URL
+      const urlParts = url.split('/');
+      const uploadIndex = urlParts.findIndex(part => part === 'upload');
+      
+      if (uploadIndex === -1 || uploadIndex + 1 >= urlParts.length) {
+        return url;
+      }
+
+      // Buscar el public_id después de las transformaciones
+      let publicId = '';
+      for (let i = uploadIndex + 1; i < urlParts.length; i++) {
+        const part = urlParts[i];
+        if (part.includes('.') && !part.includes('--')) {
+          publicId = part;
+          break;
+        }
+      }
+
+      if (!publicId) {
+        return url;
+      }
+
+      // Generar una URL simple sin transformaciones automáticas
+      const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+      return `https://res.cloudinary.com/${cloudName}/image/upload/${publicId}`;
+    } catch (error) {
+      this.logger.warn('Error normalizando URL de Cloudinary:', error);
+      return url;
+    }
+  }
 }
 
 export default CloudinaryService;

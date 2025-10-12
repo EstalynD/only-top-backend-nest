@@ -3,7 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ContratoEntity, ContratoDocument } from './contrato.schema.js';
 import { EmpleadoEntity } from './empleado.schema.js';
-import { PlantillaContratoEntity } from './plantilla-contrato.schema.js';
+import { ContractTemplatesService } from './contract-templates/contract-templates.service.js';
+// import { PlantillaContratoEntity } from './plantilla-contrato.schema.js'; // No usamos plantillas
 import { CreateContratoDto, UpdateContratoDto, AprobarContratoDto, RenovarContratoDto } from './dto/create-contrato.dto.js';
 
 @Injectable()
@@ -11,7 +12,8 @@ export class ContratosService {
   constructor(
     @InjectModel(ContratoEntity.name) private contratoModel: Model<ContratoDocument>,
     @InjectModel(EmpleadoEntity.name) private empleadoModel: Model<EmpleadoEntity>,
-    @InjectModel(PlantillaContratoEntity.name) private plantillaModel: Model<PlantillaContratoEntity>,
+    // @InjectModel(PlantillaContratoEntity.name) private plantillaModel: Model<PlantillaContratoEntity>, // No usamos plantillas
+    private readonly contractTemplatesService: ContractTemplatesService,
   ) {}
 
   /**
@@ -24,20 +26,20 @@ export class ContratosService {
       throw new NotFoundException('Empleado no encontrado');
     }
 
-    // Verificar que la plantilla existe
-    const plantilla = await this.plantillaModel.findById(createContratoDto.plantillaId);
-    if (!plantilla) {
-      throw new NotFoundException('Plantilla de contrato no encontrada');
-    }
+    // Para contratos laborales, verificar que no existe un contrato activo para este empleado
+    if (createContratoDto.tipoContrato === 'TERMINO_INDEFINIDO' || 
+        createContratoDto.tipoContrato === 'TERMINO_FIJO' ||
+        createContratoDto.tipoContrato === 'PRESTACION_SERVICIOS') {
+      
+      const contratoExistente = await this.contratoModel.findOne({
+        empleadoId: createContratoDto.empleadoId,
+        tipoContrato: createContratoDto.tipoContrato,
+        estado: { $in: ['EN_REVISION', 'APROBADO'] }
+      });
 
-    // Verificar que no existe un contrato activo para este empleado
-    const contratoExistente = await this.contratoModel.findOne({
-      empleadoId: createContratoDto.empleadoId,
-      estado: { $in: ['EN_REVISION', 'APROBADO'] }
-    });
-
-    if (contratoExistente) {
-      throw new ConflictException('Ya existe un contrato activo para este empleado');
+      if (contratoExistente) {
+        throw new ConflictException(`Ya existe un contrato ${createContratoDto.tipoContrato} activo para este empleado`);
+      }
     }
 
     // Generar número de contrato único si no se proporciona
@@ -46,7 +48,7 @@ export class ContratosService {
       numeroContrato = await this.generarNumeroContrato();
     }
 
-    // Crear el contrato
+    // Crear el contrato sin plantilla
     const contrato = new this.contratoModel({
       ...createContratoDto,
       numeroContrato,
@@ -94,7 +96,6 @@ export class ContratosService {
     return await this.contratoModel
       .find(query)
       .populate('empleadoId', 'nombre apellido correoElectronico cargoId areaId')
-      .populate('plantillaId', 'nombre descripcion')
       .populate('aprobacion.aprobadoPor', 'nombre apellido')
       .sort({ createdAt: -1 });
   }
@@ -106,7 +107,6 @@ export class ContratosService {
     const contrato = await this.contratoModel
       .findById(contratoId)
       .populate('empleadoId', 'nombre apellido correoElectronico cargoId areaId')
-      .populate('plantillaId', 'nombre descripcion contenido')
       .populate('aprobacion.aprobadoPor', 'nombre apellido');
 
     if (!contrato) {
@@ -117,12 +117,38 @@ export class ContratosService {
   }
 
   /**
+   * Genera el PDF del contrato usando la plantilla guardada
+   */
+  async generarPdfContrato(contratoId: Types.ObjectId): Promise<{ filename: string; mimeType: string; buffer: Buffer }> {
+    const contrato = await this.contratoModel
+      .findById(contratoId)
+      .populate('empleadoId', '_id nombre apellido')
+      .exec();
+
+    if (!contrato) {
+      throw new NotFoundException('Contrato no encontrado');
+    }
+
+    const empleadoId = (contrato.empleadoId as any)?._id?.toString() ?? String(contrato.empleadoId);
+    const templateKey = contrato.templateKey || (contrato.meta && (contrato.meta as any).templateId);
+
+    if (!templateKey) {
+      throw new BadRequestException('El contrato no tiene una plantilla asociada');
+    }
+
+    const pdf = await this.contractTemplatesService.generateContractPdfForTemplate(empleadoId, templateKey);
+    const empleado = contrato.empleadoId as any;
+    const filename = `contrato_${empleado?.nombre || 'empleado'}_${empleado?.apellido || ''}_${contrato.numeroContrato}.pdf`;
+
+    return { filename, mimeType: 'application/pdf', buffer: pdf };
+  }
+
+  /**
    * Obtener contratos de un empleado
    */
   async obtenerContratosPorEmpleado(empleadoId: Types.ObjectId): Promise<ContratoEntity[]> {
     return await this.contratoModel
       .find({ empleadoId })
-      .populate('plantillaId', 'nombre descripcion')
       .populate('aprobacion.aprobadoPor', 'nombre apellido')
       .sort({ createdAt: -1 });
   }
@@ -194,11 +220,7 @@ export class ContratosService {
       throw new NotFoundException('Contrato original no encontrado');
     }
 
-    // Verificar que la plantilla existe
-    const plantilla = await this.plantillaModel.findById(renovarContratoDto.plantillaId);
-    if (!plantilla) {
-      throw new NotFoundException('Plantilla de contrato no encontrada');
-    }
+    // No necesitamos verificar plantilla ya que no las usamos
 
     // Generar nuevo número de contrato
     const nuevoNumeroContrato = await this.generarNumeroContrato();
@@ -212,7 +234,6 @@ export class ContratosService {
       fechaFin: renovarContratoDto.fechaFin ? new Date(renovarContratoDto.fechaFin) : null,
       estado: 'EN_REVISION',
       contenidoContrato: renovarContratoDto.contenidoContrato,
-      plantillaId: renovarContratoDto.plantillaId,
       'aprobacion.comentarios': renovarContratoDto.comentarios,
     });
 
@@ -256,7 +277,6 @@ export class ContratosService {
         estado: 'APROBADO'
       })
       .populate('empleadoId', 'nombre apellido correoElectronico')
-      .populate('plantillaId', 'nombre')
       .sort({ fechaFin: 1 });
   }
 
@@ -270,7 +290,6 @@ export class ContratosService {
         estado: 'APROBADO'
       })
       .populate('empleadoId', 'nombre apellido correoElectronico')
-      .populate('plantillaId', 'nombre')
       .sort({ fechaFin: 1 });
   }
 
@@ -398,8 +417,53 @@ export class ContratosService {
     return await this.contratoModel
       .find(query)
       .populate('empleadoId', 'nombre apellido correoElectronico cargoId areaId')
-      .populate('plantillaId', 'nombre descripcion')
       .populate('aprobacion.aprobadoPor', 'nombre apellido')
       .sort({ createdAt: -1 });
+  }
+
+  /**
+   * Crear contrato automáticamente desde un documento de contrato laboral
+   */
+  async crearContratoDesdeDocumento(
+    empleadoId: Types.ObjectId,
+    documentoId: Types.ObjectId,
+    usuarioId: Types.ObjectId
+  ): Promise<ContratoEntity> {
+    // Verificar que el empleado existe
+    const empleado = await this.empleadoModel.findById(empleadoId);
+    if (!empleado) {
+      throw new NotFoundException('Empleado no encontrado');
+    }
+
+    // Verificar que no existe un contrato activo del mismo tipo para este empleado
+    const contratoExistente = await this.contratoModel.findOne({
+      empleadoId: empleadoId,
+      tipoContrato: empleado.tipoContrato,
+      estado: { $in: ['EN_REVISION', 'APROBADO'] }
+    });
+
+    if (contratoExistente) {
+      // Si ya existe un contrato activo, marcar el anterior como terminado
+      await this.contratoModel.findByIdAndUpdate(contratoExistente._id, {
+        $set: { estado: 'TERMINADO' }
+      });
+    }
+
+    // Generar número de contrato único
+    const numeroContrato = await this.generarNumeroContrato();
+
+    // Crear el contrato sin plantilla
+    const contrato = new this.contratoModel({
+      empleadoId: empleadoId,
+      numeroContrato,
+      tipoContrato: empleado.tipoContrato,
+      fechaInicio: empleado.fechaInicio,
+      fechaFin: null, // Los contratos indefinidos no tienen fecha fin
+      estado: 'EN_REVISION',
+      contenidoContrato: 'Contrato generado automáticamente desde documento PDF',
+      'aprobacion.comentarios': 'Contrato generado automáticamente al subir documento de contrato laboral',
+    });
+
+    return await contrato.save();
   }
 }

@@ -3,6 +3,7 @@ import { HydratedDocument } from 'mongoose';
 
 export type AttendanceType = 'FIXED' | 'ROTATING';
 export type ShiftType = 'AM' | 'PM' | 'MADRUGADA' | 'CUSTOM';
+export type SupernumeraryMode = 'REPLACEMENT' | 'FIXED_SCHEDULE';
 
 export interface TimeSlot {
   startTime: string; // Format: "HH:mm" (24-hour format)
@@ -154,6 +155,40 @@ export class AttendanceConfigEntity {
   // Si es null/undefined, no se restringe por fecha de habilitación
   @Prop({ type: Date })
   attendanceEnabledFrom?: Date;
+
+  // ========== CONFIGURACIÓN DE SUPERNUMERARIOS ==========
+  // Modalidad de trabajo del supernumerario: reemplazo de turnos o horario fijo
+  @Prop({ 
+    type: String, 
+    enum: ['REPLACEMENT', 'FIXED_SCHEDULE'], 
+    default: 'REPLACEMENT' 
+  })
+  supernumeraryMode!: SupernumeraryMode;
+
+  // Turnos que el supernumerario puede cubrir cuando está en modo REPLACEMENT
+  // Ejemplo: ['shift_am', 'shift_pm'] = puede cubrir mañana y tarde, pero no madrugada
+  @Prop({ 
+    type: [String], 
+    default: ['shift_am', 'shift_pm', 'shift_madrugada'] 
+  })
+  allowedReplacementShifts!: string[]; // IDs de los turnos que puede reemplazar
+
+  // Horario fijo específico para supernumerarios cuando está en modo FIXED_SCHEDULE
+  @Prop({ 
+    type: {
+      monday: { startTime: String, endTime: String },
+      tuesday: { startTime: String, endTime: String },
+      wednesday: { startTime: String, endTime: String },
+      thursday: { startTime: String, endTime: String },
+      friday: { startTime: String, endTime: String },
+      saturday: { startTime: String, endTime: String },
+      sunday: { startTime: String, endTime: String },
+      lunchBreakEnabled: { type: Boolean, default: false },
+      lunchBreak: { startTime: String, endTime: String }
+    },
+    default: null
+  })
+  supernumeraryFixedSchedule?: FixedSchedule;
 }
 
 export type AttendanceConfigDocument = HydratedDocument<AttendanceConfigEntity>;

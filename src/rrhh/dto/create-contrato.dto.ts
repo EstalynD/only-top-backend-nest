@@ -29,10 +29,6 @@ export class CreateContratoDto {
   @IsString()
   @IsNotEmpty()
   contenidoContrato!: string;
-
-  @IsMongoId()
-  @Transform(({ value }) => new Types.ObjectId(value))
-  plantillaId!: Types.ObjectId;
 }
 
 export class UpdateContratoDto {
@@ -61,11 +57,6 @@ export class UpdateContratoDto {
   @IsString()
   @Transform(({ value }) => value?.trim())
   contenidoContrato?: string;
-
-  @IsOptional()
-  @IsMongoId()
-  @Transform(({ value }) => new Types.ObjectId(value))
-  plantillaId?: Types.ObjectId;
 }
 
 export class AprobarContratoDto {
@@ -89,10 +80,6 @@ export class RenovarContratoDto {
   @IsString()
   @Transform(({ value }) => value?.trim())
   contenidoContrato!: string;
-
-  @IsMongoId()
-  @Transform(({ value }) => new Types.ObjectId(value))
-  plantillaId!: Types.ObjectId;
 
   @IsOptional()
   @IsString()

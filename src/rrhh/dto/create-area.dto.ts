@@ -34,4 +34,10 @@ export class CreateAreaDto {
   @IsOptional()
   @IsNumber()
   sortOrder?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @Transform(({ value }) => value?.trim() || null)
+  defaultContractTemplateId?: string | null;
 }

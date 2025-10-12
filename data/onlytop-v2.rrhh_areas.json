@@ -1,0 +1,121 @@
+[{
+  "_id": {
+    "$oid": "68dab39fd497e4ebc8c948b6"
+  },
+  "name": "Marketing",
+  "code": "MKT",
+  "description": "Área encargada de la estrategia de marketing y comunicación",
+  "color": "#F59E0B",
+  "isActive": true,
+  "sortOrder": 1,
+  "meta": {
+    "seeded": true,
+    "seededAt": {
+      "$date": "2025-09-29T16:28:15.055Z"
+    }
+  },
+  "createdAt": {
+    "$date": "2025-09-29T16:28:15.059Z"
+  },
+  "updatedAt": {
+    "$date": "2025-10-09T05:49:42.909Z"
+  },
+  "__v": 0,
+  "defaultContractTemplateId": "community_manager_contract"
+},
+{
+  "_id": {
+    "$oid": "68dab39fd497e4ebc8c948b8"
+  },
+  "name": "Traffic",
+  "code": "TRF",
+  "description": "Área especializada en tráfico digital y gestión de campañas",
+  "color": "#8B5CF6",
+  "isActive": true,
+  "sortOrder": 2,
+  "meta": {
+    "seeded": true,
+    "seededAt": {
+      "$date": "2025-09-29T16:28:15.062Z"
+    }
+  },
+  "createdAt": {
+    "$date": "2025-09-29T16:28:15.063Z"
+  },
+  "updatedAt": {
+    "$date": "2025-09-29T16:28:15.063Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "68dab39fd497e4ebc8c948ba"
+  },
+  "name": "Sales",
+  "code": "SLS",
+  "description": "Área de ventas y atención al cliente",
+  "color": "#10B981",
+  "isActive": true,
+  "sortOrder": 3,
+  "meta": {
+    "seeded": true,
+    "seededAt": {
+      "$date": "2025-09-29T16:28:15.064Z"
+    }
+  },
+  "createdAt": {
+    "$date": "2025-09-29T16:28:15.065Z"
+  },
+  "updatedAt": {
+    "$date": "2025-09-29T16:28:15.065Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "68dab39fd497e4ebc8c948bc"
+  },
+  "name": "Recruitment",
+  "code": "REC",
+  "description": "Área de reclutamiento y selección de personal",
+  "color": "#3B82F6",
+  "isActive": true,
+  "sortOrder": 4,
+  "meta": {
+    "seeded": true,
+    "seededAt": {
+      "$date": "2025-09-29T16:28:15.065Z"
+    }
+  },
+  "createdAt": {
+    "$date": "2025-09-29T16:28:15.066Z"
+  },
+  "updatedAt": {
+    "$date": "2025-09-29T16:28:15.066Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "68dab39fd497e4ebc8c948be"
+  },
+  "name": "Administrativo",
+  "code": "ADM",
+  "description": "Área administrativa y de gestión empresarial",
+  "color": "#6B7280",
+  "isActive": true,
+  "sortOrder": 5,
+  "meta": {
+    "seeded": true,
+    "seededAt": {
+      "$date": "2025-09-29T16:28:15.068Z"
+    }
+  },
+  "createdAt": {
+    "$date": "2025-09-29T16:28:15.068Z"
+  },
+  "updatedAt": {
+    "$date": "2025-09-29T16:28:15.068Z"
+  },
+  "__v": 0
+}]

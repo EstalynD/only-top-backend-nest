@@ -7,6 +7,7 @@ import { CargoEntity, CargoDocument } from './cargo.schema.js';
 import { CreateModeloDto } from './dto/create-modelo.dto.js';
 import { UpdateModeloDto } from './dto/update-modelo.dto.js';
 import { ChatterSaleEntity, ChatterSaleDocument } from '../chatter/chatter-sale.schema.js';
+import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
 
 @Injectable()
 export class ModelosService {
@@ -15,7 +16,20 @@ export class ModelosService {
     @InjectModel(EmpleadoEntity.name) private empleadoModel: Model<EmpleadoDocument>,
     @InjectModel(CargoEntity.name) private cargoModel: Model<CargoDocument>,
     @InjectModel(ChatterSaleEntity.name) private chatterSaleModel: Model<ChatterSaleDocument>,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
+
+  // ========== UTILIDADES ==========
+
+  /**
+   * Normaliza las URLs de las imágenes en un modelo
+   */
+  private normalizeModeloImageUrls(modelo: any): any {
+    if (modelo.fotoPerfil) {
+      modelo.fotoPerfil = this.cloudinaryService.normalizeImageUrl(modelo.fotoPerfil);
+    }
+    return modelo;
+  }
 
   // ========== CRUD DE MODELOS ==========
 
@@ -93,7 +107,7 @@ export class ModelosService {
       filter.traffickerAsignado = new Types.ObjectId(traffickerId);
     }
 
-    return await this.modeloModel
+    const modelos = await this.modeloModel
       .find(filter)
       .populate('salesCloserAsignado', 'nombre apellido correoElectronico cargoId')
       .populate('traffickerAsignado', 'nombre apellido correoElectronico cargoId')
@@ -103,6 +117,9 @@ export class ModelosService {
       .populate('equipoChatters.supernumerario', 'nombre apellido correoElectronico')
       .sort({ fechaRegistro: -1, nombreCompleto: 1 })
       .exec();
+
+    // Normalizar URLs de imágenes
+    return modelos.map(modelo => this.normalizeModeloImageUrls(modelo.toObject()));
   }
 
   async findModeloById(id: string): Promise<ModeloDocument> {
@@ -124,7 +141,8 @@ export class ModelosService {
       throw new NotFoundException(`Model with ID '${id}' not found`);
     }
 
-    return modelo;
+    // Normalizar URLs de imágenes
+    return this.normalizeModeloImageUrls(modelo.toObject());
   }
 
   async updateModelo(id: string, updateModeloDto: UpdateModeloDto): Promise<ModeloDocument> {
@@ -216,7 +234,8 @@ export class ModelosService {
       throw new NotFoundException(`Model with ID '${id}' not found`);
     }
 
-    return modelo;
+    // Normalizar URLs de imágenes
+    return this.normalizeModeloImageUrls(modelo.toObject());
   }
 
   async deleteModelo(id: string): Promise<void> {

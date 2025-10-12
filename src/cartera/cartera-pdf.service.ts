@@ -56,7 +56,7 @@ interface FacturaEstadoCuenta {
   montoTotal: number;
   montoPagado: number;
   saldoPendiente: number;
-  estado: 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO' | 'CANCELADO';
+  estado: 'SEGUIMIENTO' | 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO' | 'CANCELADO';
   diasVencido?: number;
 }
 
@@ -80,7 +80,7 @@ interface TotalesEstadoCuenta {
   montoVencido: number;
 }
 
-type EstadoFactura = 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO' | 'CANCELADO';
+type EstadoFactura = 'SEGUIMIENTO' | 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO' | 'CANCELADO';
 
 // ========== CONSTANTES ==========
 const PDF_CONFIG = {
@@ -129,6 +129,7 @@ const SPACING = {
 } as const;
 
 const ESTADO_COLORS: Record<EstadoFactura, string> = {
+  SEGUIMIENTO: '#06b6d4', // Cyan 500
   PENDIENTE: COLORS.WARNING,
   PARCIAL: COLORS.SECONDARY,
   PAGADO: COLORS.SUCCESS,

@@ -10,7 +10,7 @@ import { PagoEntity, PagoDocument, MetodoPago } from './pago.schema.js';
 import { RecordatorioEntity, RecordatorioDocument, TipoRecordatorio, EstadoRecordatorio } from './recordatorio.schema.js';
 import { ConfiguracionCarteraEntity, ConfiguracionCarteraDocument } from './configuracion-cartera.schema.js';
 import { ModeloEntity, ModeloDocument } from '../rrhh/modelo.schema.js';
-import { ContratoModeloEntity, ContratoModeloDocument, TipoComision } from '../rrhh/contrato-modelo.schema.js';
+import { ContratoModeloEntity, ContratoModeloDocument, TipoComision, PeriodicidadPago } from '../rrhh/contrato-modelo.schema.js';
 import { ChatterSaleEntity, ChatterSaleDocument } from '../chatter/chatter-sale.schema.js';
 import { CommissionScaleEntity } from '../sistema/commission-scale.schema.js';
 import {
@@ -23,6 +23,7 @@ import {
   EnviarRecordatorioDto,
   FiltrosRecordatoriosDto,
   ObtenerEstadoCuentaDto,
+  UpdateConfiguracionCarteraDto,
 } from './dto/cartera.dto.js';
 
 /**
@@ -66,18 +67,23 @@ export class CarteraService {
   /**
    * Genera una factura automática para una modelo en un periodo específico
    * 
-   * Flujo:
+  /**
+   * Genera una factura automática para una modelo en un periodo específico
+   * 
+   * NUEVA LÓGICA con Sistema de Seguimiento:
    * 1. Valida que la modelo existe y está activa
    * 2. Obtiene el contrato activo de la modelo
-   * 3. Consulta las ventas del periodo en ChatterSales
-   * 4. Calcula la comisión según el tipo de contrato (FIJA o ESCALONADA)
-   * 5. Crea los items de la factura con MoneyService
-   * 6. Guarda la factura con valores escalados y formateados
+   * 3. Verifica que NO exista ya una factura para este periodo (evita duplicados)
+   * 4. Calcula fechaCorte según la periodicidad del contrato
+   * 5. Consulta las ventas desde fechaInicio hasta el día antes de fechaCorte
+   * 6. Calcula la comisión según el tipo de contrato (FIJA o ESCALONADA)
+   * 7. Crea la factura en estado SEGUIMIENTO (no PENDIENTE)
+   * 8. La factura cambiará a PENDIENTE automáticamente cuando llegue fechaCorte (via scheduler)
    * 
    * @param modeloId ID de la modelo
-   * @param periodo Periodo de facturación
+   * @param periodo Periodo de facturación (DEPRECADO - se calcula automáticamente)
    * @param creadaPor ID del usuario que genera la factura
-   * @returns Factura generada
+   * @returns Factura generada en estado SEGUIMIENTO
    */
   async generarFacturaAutomatica(
     modeloId: string,
@@ -105,27 +111,64 @@ export class CarteraService {
       );
     }
 
-    // 3. Consultar ventas del periodo
-    // Construir rango de fechas para el periodo
-    let fechaInicio: Date;
-    let fechaFin: Date;
-
-    if (periodo.quincena === 1) {
-      // Primera quincena: día 1 al 15
-      fechaInicio = new Date(periodo.anio, periodo.mes - 1, 1, 0, 0, 0);
-      fechaFin = new Date(periodo.anio, periodo.mes - 1, 15, 23, 59, 59);
-    } else if (periodo.quincena === 2) {
-      // Segunda quincena: día 16 al fin de mes
-      fechaInicio = new Date(periodo.anio, periodo.mes - 1, 16, 0, 0, 0);
-      // Último día del mes
-      fechaFin = new Date(periodo.anio, periodo.mes, 0, 23, 59, 59);
-    } else {
-      // Mes completo
-      fechaInicio = new Date(periodo.anio, periodo.mes - 1, 1, 0, 0, 0);
-      // Último día del mes
-      fechaFin = new Date(periodo.anio, periodo.mes, 0, 23, 59, 59);
+    if (!contrato.fechaInicio) {
+      throw new BadRequestException(
+        `El contrato de ${modelo.nombreCompleto} no tiene fechaInicio definida`
+      );
     }
 
+    // 3. Calcular fechaCorte según periodicidad del contrato
+    const periodicidad = contrato.periodicidadPago; // 'QUINCENAL' o 'MENSUAL'
+    const fechaInicioContrato = new Date(contrato.fechaInicio);
+    const fechaCorte = this.calcularFechaCorte(periodicidad, fechaInicioContrato);
+
+    // 4. Calcular periodo real de facturación
+    const periodoReal = this.calcularPeriodo(fechaInicioContrato, fechaCorte, periodicidad);
+
+    // 5. Verificar si ya existe una factura para este periodo (evitar duplicados)
+    const existeDuplicado = await this.existeFacturaEnPeriodo(modeloId, periodoReal);
+
+    if (existeDuplicado) {
+      throw new BadRequestException(
+        `Ya existe una factura para ${modelo.nombreCompleto} en el periodo ${periodoReal.anio}-${String(periodoReal.mes).padStart(2, '0')}${periodoReal.quincena ? `-Q${periodoReal.quincena}` : ''}`
+      );
+    }
+
+    // 6. Calcular rango de fechas para consultar ventas
+    // Desde fechaInicio hasta el día ANTERIOR a fechaCorte
+    let fechaInicio: Date;
+    const fechaFin = new Date(fechaCorte);
+    fechaFin.setDate(fechaFin.getDate() - 1); // Día anterior al corte
+    fechaFin.setHours(23, 59, 59, 999); // Hasta el final del día
+
+    if (periodoReal.quincena === 1) {
+      // Primera quincena: día 1 al 15
+      fechaInicio = new Date(periodoReal.anio, periodoReal.mes - 1, 1, 0, 0, 0);
+    } else if (periodoReal.quincena === 2) {
+      // Segunda quincena: día 16 al fin de mes
+      fechaInicio = new Date(periodoReal.anio, periodoReal.mes - 1, 16, 0, 0, 0);
+    } else {
+      // Mes completo
+      fechaInicio = new Date(periodoReal.anio, periodoReal.mes - 1, 1, 0, 0, 0);
+    }
+
+    // Ajustar fechaInicio si el contrato inició durante el periodo
+    if (fechaInicioContrato > fechaInicio && fechaInicioContrato <= fechaFin) {
+      fechaInicio = new Date(
+        fechaInicioContrato.getFullYear(),
+        fechaInicioContrato.getMonth(),
+        fechaInicioContrato.getDate(),
+        0,
+        0,
+        0
+      );
+      
+      this.logger.log(
+        `Ajustando fechaInicio al inicio del contrato: ${fechaInicio.toISOString()}`
+      );
+    }
+
+    // 7. Consultar ventas del periodo
     const ventasQuery: any = {
       modeloId: new Types.ObjectId(modeloId),
       fechaVenta: {
@@ -144,13 +187,12 @@ export class CarteraService {
 
     if (ventas.length === 0) {
       throw new BadRequestException(
-        `No hay ventas registradas para el periodo ${periodo.anio}-${periodo.mes}${periodo.quincena ? `-Q${periodo.quincena}` : ''}`
+        `No hay ventas registradas para el periodo ${periodoReal.anio}-${periodoReal.mes}${periodoReal.quincena ? `-Q${periodoReal.quincena}` : ''}`
       );
     }
 
-    // 4. Calcular total de ventas en USD
+    // 8. Calcular total de ventas en USD
     const totalVentasUSD = ventas.reduce((acc, venta) => {
-      // ChatterSale almacena monto directamente como número (no BigInt)
       return this.moneyService.add(acc, venta.monto);
     }, 0);
 
@@ -158,30 +200,28 @@ export class CarteraService {
       `Total ventas ${modelo.nombreCompleto} en periodo: ${this.moneyService.formatForUser(totalVentasUSD, 'USD')}`
     );
 
-    // 5. Calcular comisión según tipo de contrato
+    // 9. Calcular comisión según tipo de contrato
     let montoComision: number;
     let conceptoDetalle: string;
 
     if (contrato.tipoComision === TipoComision.FIJO) {
-      // Comisión fija
       const porcentaje = contrato.comisionFija!.porcentaje;
       montoComision = this.moneyService.multiply(totalVentasUSD, porcentaje / 100);
       conceptoDetalle = `Comisión ${porcentaje}% sobre ventas`;
-      
-      this.logger.log(`Usando comisión fija: ${porcentaje}%`);
+
+      this.logger.log(`Tipo de comisión: FIJA (${porcentaje}%)`);
     } else {
-      // Comisión escalonada
       const escala = contrato.comisionEscalonada!.escalaId as any;
-      
+
       this.logger.log(`Tipo de comisión: ESCALONADA`);
       this.logger.log(`Escala obtenida: ${JSON.stringify(escala)}`);
-      
+
       if (!escala) {
         throw new BadRequestException(
           `El contrato de ${modelo.nombreCompleto} no tiene una escala de comisión asignada`
         );
       }
-      
+
       montoComision = this.calcularComisionEscalonada(totalVentasUSD, escala);
       conceptoDetalle = `Comisión escalonada (${escala.name || 'Sin nombre'})`;
     }
@@ -193,7 +233,7 @@ export class CarteraService {
       `Comisión calculada: ${this.moneyService.formatForUser(montoComision, 'USD')}`
     );
 
-    // 6. Crear items de la factura
+    // 10. Crear items de la factura
     const items: ItemFactura[] = [
       {
         concepto: conceptoDetalle,
@@ -204,49 +244,59 @@ export class CarteraService {
       },
     ];
 
-    // 7. Obtener configuración de vencimiento
+    // 11. Calcular fechas
     const config = await this.obtenerConfiguracion();
-    const fechaEmision = new Date();
-    const fechaVencimiento = new Date(fechaEmision);
-    fechaVencimiento.setDate(fechaVencimiento.getDate() + config.diasVencimientoFactura);
+    const hoy = new Date();
+    const fechaEmision = new Date(hoy); // Fecha de creación (hoy)
+    fechaEmision.setHours(0, 0, 0, 0);
 
-    // 8. Generar número de factura
+    const fechaVencimiento = new Date(fechaCorte);
+    fechaVencimiento.setDate(fechaVencimiento.getDate() + config.diasVencimientoFactura);
+    fechaVencimiento.setHours(23, 59, 59, 999);
+
+    // 12. Generar número de factura único (con retry logic)
     const numeroFactura = await this.generarNumeroFactura();
 
-    // 9. Crear factura
+    // 13. Crear factura en estado SEGUIMIENTO
     const factura = new this.facturaModel({
       numeroFactura,
       modeloId: new Types.ObjectId(modeloId),
       contratoId: contrato._id,
       periodo: {
-        anio: periodo.anio,
-        mes: periodo.mes,
-        quincena: periodo.quincena || null,
+        anio: periodoReal.anio,
+        mes: periodoReal.mes,
+        quincena: periodoReal.quincena || null,
       },
-      fechaEmision,
-      fechaVencimiento,
-      estado: EstadoFactura.PENDIENTE,
-      moneda: 'USD', // Por defecto USD, se puede configurar después
+      fechaEmision, // Fecha de creación (hoy)
+      fechaCorte, // Fecha real de facturación (día 16, día 1, etc.)
+      fechaVencimiento, // fechaCorte + diasVencimiento
+      estado: EstadoFactura.SEGUIMIENTO, // ⭐ Estado inicial SEGUIMIENTO
+      moneda: 'USD',
       items,
       subtotal: this.moneyService.toDatabase(montoComision, 'USD'),
       descuento: 0n,
       total: this.moneyService.toDatabase(montoComision, 'USD'),
       pagos: [],
       saldoPendiente: this.moneyService.toDatabase(montoComision, 'USD'),
-      notas: null,
+      notas: `Factura en seguimiento. Se activará automáticamente el ${fechaCorte.toISOString().split('T')[0]}`,
       creadaPor: new Types.ObjectId(creadaPor),
       modificadaPor: null,
       meta: {
         totalVentasUSD: totalVentasUSD,
         cantidadVentas: ventas.length,
         tipoComision: contrato.tipoComision,
+        periodicidad: periodicidad,
+        periodoInicio: fechaInicio.toISOString(),
+        periodoFin: fechaFin.toISOString(),
+        fechaCorte: fechaCorte.toISOString(),
+        generadaEnSeguimiento: true,
       },
     });
 
     await factura.save();
 
     this.logger.log(
-      `✅ Factura ${numeroFactura} generada para ${modelo.nombreCompleto}: ${this.moneyService.formatForUser(montoComision, 'USD')}`
+      `✅ Factura ${numeroFactura} generada en SEGUIMIENTO para ${modelo.nombreCompleto}: ${this.moneyService.formatForUser(montoComision, 'USD')} | Activación: ${fechaCorte.toISOString().split('T')[0]}`
     );
 
     return this.facturaToPlainObject(factura) as any;
@@ -287,38 +337,32 @@ export class CarteraService {
     const facturas: any[] = [];
     const erroresDetalle: Array<{ modeloId: string; error: string }> = [];
 
-    // Generar facturas en paralelo (con limit para no sobrecargar)
-    const BATCH_SIZE = 5;
-    for (let i = 0; i < modelos.length; i += BATCH_SIZE) {
-      const batch = modelos.slice(i, i + BATCH_SIZE);
-      
-      await Promise.all(
-        batch.map(async (modelo) => {
-          try {
-            const factura = await this.generarFacturaAutomatica(
-              (modelo as any)._id.toString(),
-              {
-                anio: dto.anio,
-                mes: dto.mes,
-                quincena: dto.quincena,
-              },
-              creadaPor,
-            );
-            
-            // Convertir a objeto plano sin BigInt
-            const facturaPlain = this.facturaToPlainObject(factura);
-            facturas.push(facturaPlain);
-          } catch (error: any) {
-            this.logger.error(
-              `Error generando factura para ${modelo.nombreCompleto}: ${error.message}`
-            );
-            erroresDetalle.push({
-              modeloId: (modelo as any)._id.toString(),
-              error: error.message,
-            });
-          }
-        })
-      );
+    // Generar facturas SECUENCIALMENTE para evitar colisiones de numeroFactura
+    // La generación en paralelo causa race conditions donde múltiples facturas obtienen el mismo número
+    for (const modelo of modelos) {
+      try {
+        const factura = await this.generarFacturaAutomatica(
+          (modelo as any)._id.toString(),
+          {
+            anio: dto.anio,
+            mes: dto.mes,
+            quincena: dto.quincena,
+          },
+          creadaPor,
+        );
+        
+        // Convertir a objeto plano sin BigInt
+        const facturaPlain = this.facturaToPlainObject(factura);
+        facturas.push(facturaPlain);
+      } catch (error: any) {
+        this.logger.error(
+          `Error generando factura para ${modelo.nombreCompleto}: ${error.message}`
+        );
+        erroresDetalle.push({
+          modeloId: (modelo as any)._id.toString(),
+          error: error.message,
+        });
+      }
     }
 
     this.logger.log(
@@ -337,6 +381,10 @@ export class CarteraService {
    * Crea una factura manualmente
    * 
    * @param dto Datos de la factura
+  /**
+   * Crea una factura manualmente
+   * 
+   * @param dto Datos de la factura
    * @param creadaPor ID del usuario
    * @returns Factura creada
    */
@@ -348,6 +396,17 @@ export class CarteraService {
     const modelo = await this.modeloModel.findById(dto.modeloId).lean();
     if (!modelo) {
       throw new NotFoundException(`Modelo con ID ${dto.modeloId} no encontrada`);
+    }
+
+    // Verificar si ya existe una factura para este periodo (evitar duplicados)
+    if (dto.periodo) {
+      const existeDuplicado = await this.existeFacturaEnPeriodo(dto.modeloId, dto.periodo);
+
+      if (existeDuplicado) {
+        throw new BadRequestException(
+          `Ya existe una factura para ${modelo.nombreCompleto} en el periodo ${dto.periodo.anio}-${String(dto.periodo.mes).padStart(2, '0')}${dto.periodo.quincena ? `-Q${dto.periodo.quincena}` : ''}`
+        );
+      }
     }
 
     // Obtener contrato
@@ -395,22 +454,30 @@ export class CarteraService {
     // Fechas
     const config = await this.obtenerConfiguracion();
     const fechaEmision = dto.fechaEmision ? new Date(dto.fechaEmision) : new Date();
+    
+    // fechaCorte: Para facturas manuales, por defecto es la misma que fechaEmision
+    // (ya que se crean manualmente, no en modo seguimiento)
+    const fechaCorte = dto.fechaEmision ? new Date(dto.fechaEmision) : new Date();
+    
     const diasVencimiento = dto.diasVencimiento || config.diasVencimientoFactura;
-    const fechaVencimiento = new Date(fechaEmision);
+    const fechaVencimiento = new Date(fechaCorte);
     fechaVencimiento.setDate(fechaVencimiento.getDate() + diasVencimiento);
 
-    // Número de factura
+    // Número de factura (con retry logic)
     const numeroFactura = await this.generarNumeroFactura();
 
     // Crear factura
+    // Las facturas manuales por defecto van en estado PENDIENTE (no SEGUIMIENTO)
+    // porque el usuario las crea directamente para enviar de inmediato
     const factura = new this.facturaModel({
       numeroFactura,
       modeloId: new Types.ObjectId(dto.modeloId),
       contratoId: contrato._id,
       periodo: dto.periodo,
       fechaEmision,
+      fechaCorte, // Nueva campo requerido
       fechaVencimiento,
-      estado: EstadoFactura.PENDIENTE,
+      estado: EstadoFactura.PENDIENTE, // Manual = PENDIENTE directo
       moneda: 'USD', // Por defecto USD
       items: itemsProcessed,
       subtotal: this.moneyService.toDatabase(subtotal, 'USD'),
@@ -421,7 +488,7 @@ export class CarteraService {
       notas: dto.notas || null,
       creadaPor: new Types.ObjectId(creadaPor),
       modificadaPor: null,
-      meta: {},
+      meta: { creacionManual: true },
     });
 
     await factura.save();
@@ -773,25 +840,214 @@ export class CarteraService {
   }
 
   /**
-   * Genera un número de factura único
+   * Genera un número de factura único con manejo de colisiones
+   * 
+   * Estrategia MEJORADA:
+   * 1. Obtiene todas las facturas existentes del año
+   * 2. Encuentra el próximo número secuencial disponible (1, 2, 3, 4, ...)
+   * 3. Si hay huecos en la secuencia, los llena primero
+   * 4. Verifica que el número elegido no existe (doble verificación)
+   * 5. Si después de 50 intentos falla, usa timestamp como fallback
+   * 
+   * Ejemplos:
+   * - Existen: 0001, 0002, 0003 → Genera: 0004
+   * - Existen: 0001, 0003, 0005 → Genera: 0002 (llena hueco)
+   * - Existen: 0001 → Genera: 0002
+   * - No existen facturas → Genera: 0001
+   * 
+   * @param maxIntentos Número máximo de intentos (default: 50)
+   * @returns Número de factura único
    */
-  private async generarNumeroFactura(): Promise<string> {
+  private async generarNumeroFactura(maxIntentos: number = 50): Promise<string> {
     const anio = new Date().getFullYear();
-    const ultimaFactura = await this.facturaModel
-      .findOne({ numeroFactura: new RegExp(`^FACT-${anio}-`) })
-      .sort({ numeroFactura: -1 })
-      .lean();
+    const patron = new RegExp(`^FACT-${anio}-(\\d+)$`);
 
-    let numero = 1;
+    try {
+      // Obtener todas las facturas del año ordenadas numéricamente
+      const facturasExistentes = await this.facturaModel
+        .find({ numeroFactura: new RegExp(`^FACT-${anio}-\\d+$`) })
+        .select('numeroFactura')
+        .sort({ numeroFactura: 1 })
+        .lean();
 
-    if (ultimaFactura) {
-      const match = ultimaFactura.numeroFactura.match(/FACT-\d{4}-(\d+)/);
-      if (match) {
-        numero = parseInt(match[1], 10) + 1;
+      // Extraer los números existentes
+      const numerosExistentes = new Set<number>();
+      for (const factura of facturasExistentes) {
+        const match = factura.numeroFactura.match(patron);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num)) {
+            numerosExistentes.add(num);
+          }
+        }
+      }
+
+      // Buscar el próximo número disponible (secuencial)
+      let numeroDisponible = 1;
+      for (let candidato = 1; candidato <= maxIntentos; candidato++) {
+        if (!numerosExistentes.has(candidato)) {
+          numeroDisponible = candidato;
+          break;
+        }
+      }
+
+      // Si llegamos al límite, usar el siguiente después del máximo existente
+      if (numerosExistentes.has(numeroDisponible)) {
+        const maxExistente = Math.max(...Array.from(numerosExistentes));
+        numeroDisponible = maxExistente + 1;
+      }
+
+      const numeroFacturaCandidate = `FACT-${anio}-${String(numeroDisponible).padStart(4, '0')}`;
+
+      // Doble verificación: asegurar que no existe (prevenir race conditions)
+      const existe = await this.facturaModel.exists({ numeroFactura: numeroFacturaCandidate });
+
+      if (!existe) {
+        this.logger.debug(`✅ Número de factura generado: ${numeroFacturaCandidate}`);
+        return numeroFacturaCandidate;
+      }
+
+      // Si existe después de la verificación, es una race condition
+      // Buscar el siguiente disponible con retry
+      this.logger.warn(`⚠️  Race condition detectada en ${numeroFacturaCandidate}, buscando siguiente...`);
+
+      for (let intento = 1; intento <= 10; intento++) {
+        const siguienteNumero = numeroDisponible + intento;
+        const siguienteCandidate = `FACT-${anio}-${String(siguienteNumero).padStart(4, '0')}`;
+        
+        const existeSiguiente = await this.facturaModel.exists({ numeroFactura: siguienteCandidate });
+        
+        if (!existeSiguiente) {
+          this.logger.debug(`✅ Número de factura generado (retry ${intento}): ${siguienteCandidate}`);
+          return siguienteCandidate;
+        }
+      }
+
+      // Fallback: Usar timestamp para garantizar unicidad absoluta
+      const timestamp = Date.now().toString().slice(-6);
+      const numeroFacturaFallback = `FACT-${anio}-T${timestamp}`;
+      
+      this.logger.warn(`⚠️  Usando fallback con timestamp: ${numeroFacturaFallback}`);
+      
+      return numeroFacturaFallback;
+
+    } catch (error: any) {
+      // Error catastrófico: usar timestamp
+      const timestamp = Date.now().toString().slice(-6);
+      const numeroFacturaFallback = `FACT-${anio}-T${timestamp}`;
+      
+      this.logger.error(`❌ Error generando número de factura: ${error.message}. Usando fallback: ${numeroFacturaFallback}`);
+      
+      return numeroFacturaFallback;
+    }
+  }
+
+  /**
+   * Calcula la fecha de corte según la periodicidad del contrato
+   * 
+   * Reglas:
+   * - QUINCENAL:
+   *   - Si fechaInicio está entre 1-15: próximo corte es día 16 del mismo mes
+   *   - Si fechaInicio está entre 16-31: próximo corte es día 1 del mes siguiente
+   * - MENSUAL:
+   *   - Siempre es el día 1 del mes siguiente a la fecha actual
+   * 
+   * @param periodicidad 'QUINCENAL' | 'MENSUAL'
+   * @param fechaInicioContrato Fecha de inicio del contrato
+   * @returns Fecha de corte (día que se enviará la factura)
+   */
+  private calcularFechaCorte(periodicidad: 'QUINCENAL' | 'MENSUAL', fechaInicioContrato: Date): Date {
+    const hoy = new Date();
+    const diaInicio = fechaInicioContrato.getDate();
+
+    if (periodicidad === 'QUINCENAL') {
+      // Si el contrato inició entre 1-15, el corte es el 16 del mismo mes
+      if (diaInicio >= 1 && diaInicio <= 15) {
+        const fechaCorte = new Date(hoy.getFullYear(), hoy.getMonth(), 16);
+        
+        // Si ya pasó el día 16 de este mes, ir al día 16 del próximo mes
+        if (hoy > fechaCorte) {
+          return new Date(hoy.getFullYear(), hoy.getMonth() + 1, 16);
+        }
+        
+        return fechaCorte;
+      }
+
+      // Si el contrato inició entre 16-31, el corte es el 1 del mes siguiente
+      const fechaCorte = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1);
+      return fechaCorte;
+    }
+
+    // MENSUAL: siempre es el 1 del mes siguiente
+    return new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1);
+  }
+
+  /**
+   * Calcula el periodo de facturación según fechaInicio y fechaCorte
+   * 
+   * @param fechaInicioContrato Fecha de inicio del contrato
+   * @param fechaCorte Fecha de corte calculada
+   * @param periodicidad 'QUINCENAL' | 'MENSUAL'
+   * @returns Objeto con año, mes y quincena (si aplica)
+   */
+  private calcularPeriodo(
+    fechaInicioContrato: Date,
+    fechaCorte: Date,
+    periodicidad: 'QUINCENAL' | 'MENSUAL',
+  ): { anio: number; mes: number; quincena?: number | null } {
+    const mesCorte = fechaCorte.getMonth() + 1; // getMonth() retorna 0-11
+    const anioCorte = fechaCorte.getFullYear();
+
+    if (periodicidad === 'QUINCENAL') {
+      const diaCorte = fechaCorte.getDate();
+      
+      // Si el corte es día 16, es la primera quincena del mes actual
+      if (diaCorte === 16) {
+        return { anio: anioCorte, mes: mesCorte, quincena: 1 };
+      }
+
+      // Si el corte es día 1, es la segunda quincena del mes anterior
+      if (diaCorte === 1) {
+        const mesAnterior = mesCorte === 1 ? 12 : mesCorte - 1;
+        const anioAnterior = mesCorte === 1 ? anioCorte - 1 : anioCorte;
+        return { anio: anioAnterior, mes: mesAnterior, quincena: 2 };
       }
     }
 
-    return `FACT-${anio}-${String(numero).padStart(4, '0')}`;
+    // MENSUAL: mes anterior al corte
+    const mesFacturado = mesCorte === 1 ? 12 : mesCorte - 1;
+    const anioFacturado = mesCorte === 1 ? anioCorte - 1 : anioCorte;
+
+    return { anio: anioFacturado, mes: mesFacturado, quincena: null };
+  }
+
+  /**
+   * Verifica si ya existe una factura para el modelo en el periodo especificado
+   * Previene duplicados
+   * 
+   * @param modeloId ID de la modelo
+   * @param periodo Periodo a verificar
+   * @returns true si ya existe, false si no
+   */
+  private async existeFacturaEnPeriodo(
+    modeloId: Types.ObjectId | string,
+    periodo: { anio: number; mes: number; quincena?: number | null },
+  ): Promise<boolean> {
+    const query: any = {
+      modeloId,
+      'periodo.anio': periodo.anio,
+      'periodo.mes': periodo.mes,
+      estado: { $ne: EstadoFactura.CANCELADO }, // No contar facturas canceladas
+    };
+
+    if (periodo.quincena) {
+      query['periodo.quincena'] = periodo.quincena;
+    } else {
+      query['periodo.quincena'] = null;
+    }
+
+    const existe = await this.facturaModel.exists(query);
+    return !!existe;
   }
 
   /**
@@ -825,6 +1081,141 @@ export class CarteraService {
     }
 
     return config as any;
+  }
+
+  // ========== CONFIGURACIÓN (PÚBLICO) ==========
+
+  /**
+   * Obtiene la configuración actual de cartera
+   * Crea una por defecto si no existe.
+   */
+  async obtenerConfiguracionPublica(): Promise<ConfiguracionCarteraDocument> {
+    const config = await this.obtenerConfiguracion();
+    return config as any;
+  }
+
+  /**
+   * Actualiza la configuración de cartera
+   * Solo actualiza los campos provistos en el DTO.
+   */
+  async actualizarConfiguracion(
+    dto: Partial<UpdateConfiguracionCarteraDto>,
+    actualizadoPor: string,
+  ): Promise<ConfiguracionCarteraDocument> {
+    // Asegurar que exista configuración
+    await this.obtenerConfiguracion();
+
+    // Sanitizar DTO: quitar propiedades undefined para no sobreescribir
+    const toSet: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(dto || {})) {
+      if (v !== undefined) toSet[k] = v as unknown;
+    }
+
+    const updated = await this.configuracionModel
+      .findOneAndUpdate(
+        {},
+        { $set: { ...toSet } },
+        { new: true }
+      )
+      .lean();
+
+    this.logger?.log?.(
+      `Configuración de cartera actualizada por ${actualizadoPor}: ${Object.keys(toSet).join(', ')}`
+    );
+
+    return updated as any;
+  }
+
+  /**
+   * Activa facturas en seguimiento cuando llega su fechaCorte
+   * 
+   * Busca facturas con estado=SEGUIMIENTO y fechaCorte <= hoy,
+   * las cambia a estado=PENDIENTE y opcionalmente envía notificación.
+   * 
+   * @returns Resultado con cantidad de facturas activadas
+   */
+  async activarFacturasEnSeguimiento(): Promise<{
+    activadas: number;
+    errores: number;
+    facturas: Array<{ id: string; numeroFactura: string; modeloNombre: string; error?: string }>;
+  }> {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); // Normalizar a inicio del día
+
+    try {
+      // Buscar facturas en seguimiento con fechaCorte <= hoy
+      const facturasEnSeguimiento = await this.facturaModel
+        .find({
+          estado: EstadoFactura.SEGUIMIENTO,
+          fechaCorte: { $lte: hoy },
+        })
+        .populate('modeloId', 'nombreCompleto correoElectronico')
+        .lean();
+
+      if (facturasEnSeguimiento.length === 0) {
+        this.logger.debug('📋 No hay facturas en seguimiento para activar');
+        return { activadas: 0, errores: 0, facturas: [] };
+      }
+
+      this.logger.log(
+        `📋 Encontradas ${facturasEnSeguimiento.length} facturas en seguimiento para activar`
+      );
+
+      const resultado = {
+        activadas: 0,
+        errores: 0,
+        facturas: [] as Array<{ id: string; numeroFactura: string; modeloNombre: string; error?: string }>,
+      };
+
+      // Activar cada factura
+      for (const factura of facturasEnSeguimiento) {
+        try {
+          const modelo = factura.modeloId as any;
+
+          // Cambiar estado a PENDIENTE
+          await this.facturaModel.findByIdAndUpdate(factura._id, {
+            $set: {
+              estado: EstadoFactura.PENDIENTE,
+              notas: `Factura activada automáticamente el ${hoy.toISOString().split('T')[0]}`,
+            },
+          });
+
+          resultado.activadas++;
+          resultado.facturas.push({
+            id: factura._id.toString(),
+            numeroFactura: factura.numeroFactura,
+            modeloNombre: modelo?.nombreCompleto || 'Desconocido',
+          });
+
+          this.logger.log(
+            `✅ Factura ${factura.numeroFactura} activada para ${modelo?.nombreCompleto || 'Desconocido'}`
+          );
+
+          // TODO: Enviar notificación por email a la modelo
+          // await this.emailService.enviarNotificacionFacturaActivada(factura);
+        } catch (error: any) {
+          this.logger.error(
+            `❌ Error activando factura ${factura.numeroFactura}: ${error.message}`
+          );
+          resultado.errores++;
+          resultado.facturas.push({
+            id: factura._id.toString(),
+            numeroFactura: factura.numeroFactura,
+            modeloNombre: (factura.modeloId as any)?.nombreCompleto || 'Desconocido',
+            error: error.message,
+          });
+        }
+      }
+
+      this.logger.log(
+        `📊 Activación completada: ${resultado.activadas} activadas, ${resultado.errores} errores`
+      );
+
+      return resultado;
+    } catch (error: any) {
+      this.logger.error(`❌ Error en activarFacturasEnSeguimiento: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   // ========== PARTE 2: PAGOS ==========

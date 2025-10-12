@@ -1,46 +1,5 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsNumber, IsMongoId, MaxLength, MinLength, Matches, ValidateNested, IsArray, IsPositive, Min } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
-import { Types } from 'mongoose';
-
-class SalaryRangeDto {
-  @IsNumber()
-  @IsPositive()
-  min!: number;
-
-  @IsNumber()
-  @IsPositive()
-  max!: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(3)
-  currency?: string;
-}
-
-class RequirementsDto {
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @MaxLength(200, { each: true })
-  education?: string[];
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  experience?: string;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @MaxLength(100, { each: true })
-  skills?: string[];
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @MaxLength(50, { each: true })
-  languages?: string[];
-}
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsNumber, IsMongoId, MaxLength, MinLength, Matches, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateCargoDto {
   @IsString()
@@ -58,9 +17,10 @@ export class CreateCargoDto {
   @Transform(({ value }) => value?.trim().toUpperCase())
   code!: string;
 
+  // Mantener como string para que la validación @IsMongoId funcione; Mongoose castea a ObjectId
   @IsMongoId()
-  @Transform(({ value }) => new Types.ObjectId(value))
-  areaId!: Types.ObjectId;
+  @Transform(({ value }) => (value == null ? value : String(value)))
+  areaId!: string;
 
   @IsOptional()
   @IsString()
@@ -72,16 +32,6 @@ export class CreateCargoDto {
   @IsNumber()
   @Min(1)
   hierarchyLevel?: number;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => SalaryRangeDto)
-  salaryRange?: SalaryRangeDto | null;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => RequirementsDto)
-  requirements?: RequirementsDto | null;
 
   @IsOptional()
   @IsBoolean()

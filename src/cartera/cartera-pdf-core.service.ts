@@ -182,7 +182,7 @@ export class CarteraPdfCoreService {
       moneda: pago.moneda,
       metodoPago: pago.metodoPago,
       referencia: pago.referencia || null,
-      comprobante: (pago as any).comprobante || null,
+      comprobanteUrl: (pago as any).comprobante || null,
     }));
 
     // Preparar datos para el PDF
@@ -200,6 +200,7 @@ export class CarteraPdfCoreService {
         saldoPendiente: this.moneyService.fromDatabase(factura.saldoPendiente),
         montoPagado: this.moneyService.fromDatabase(factura.total - factura.saldoPendiente),
         notas: factura.notas,
+        meta: (factura as any).meta || {},
         periodo: {
           anio: factura.periodo.anio,
           mes: factura.periodo.mes,

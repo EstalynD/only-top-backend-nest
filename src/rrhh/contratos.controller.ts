@@ -265,20 +265,14 @@ export class ContratosController {
    */
   @Get(':id/pdf')
   async generarPdfContrato(@Param('id') id: string) {
-    const contrato = await this.contratosService.obtenerContratoPorId(new Types.ObjectId(id));
-
-    // Aquí se implementaría la lógica para generar el PDF
-    // Por ahora retornamos la información del contrato
+    const result = await this.contratosService.generarPdfContrato(new Types.ObjectId(id));
     return {
       success: true,
       message: 'PDF generado exitosamente',
       data: {
-        contratoId: id,
-        numeroContrato: contrato.numeroContrato,
-        empleado: contrato.empleadoId,
-        contenido: contrato.contenidoContrato,
-        // En una implementación real, aquí iría la URL del PDF generado
-        urlPdf: `https://api.example.com/contratos/${id}/pdf`,
+        filename: result.filename,
+        mimeType: result.mimeType,
+        pdfBuffer: result.buffer.toString('base64'),
       },
     };
   }
